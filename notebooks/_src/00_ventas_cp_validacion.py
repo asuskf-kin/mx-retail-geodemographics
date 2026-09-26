@@ -1,6 +1,9 @@
 # %% [markdown]
 # # 00 · Validación y cruce: ventas Bepensa × Customer Potential (CP) — ZM Mérida
 #
+# **Papel en la metodología Golden Stores (notebook 05):** valida la **variable 1, ventas de la tienda**, y las señales del CP
+# (potencial futuro, usado para clasificar). La variable 2, demanda potencial a 300 m, la construye el notebook 04.
+#
 # **Objetivo:** dejar una tabla limpia, **una fila por punto de venta (PDV) con coordenadas**, con sus ventas y su
 # potencial, y decidir con **evidencia estadística** (prueba, tamaño de efecto e intervalo de confianza) qué señales
 # sirven y cuáles no. Esa tabla alimenta el notebook 04 (perfil NSE e indicadores en hexágonos a ≤ 300 m de cada PDV).
@@ -52,6 +55,7 @@ from sklearn.tree import DecisionTreeClassifier
 from IPython.display import display
 
 import config as C
+import cadenas
 import eda
 from descargas import descargar, extraer
 
@@ -63,9 +67,21 @@ print(f"Python {platform.python_version()} · pandas {pd.__version__} · numpy {
       f"scikit-learn {sklearn.__version__} · geopandas {gpd.__version__}")
 
 # --- requisitos: datos del cliente y polígonos municipales del Marco Geoestadístico ---
+# Ventas y Customer Potential son los insumos críticos: sin ellos no hay Golden Stores (se piden al cliente, no se sustituyen)
+assert C.CLIENTE_VENTAS, f"No hay archivos part-*.csv en {C.CLIENTE_RAW / 'ventas'}: pedir las ventas por PDV al cliente"
 for f in [C.CLIENTE_CP, *C.CLIENTE_VENTAS]:
-    assert Path(f).exists(), f"Falta el archivo del cliente: {f}"
-assert C.CLIENTE_VENTAS, f"No hay archivos part-*.csv en {C.CLIENTE_RAW / 'ventas'}"
+    assert Path(f).exists(), f"Falta el archivo del cliente: {f} (pedirlo al cliente; no se puede avanzar sin él)"
+# registro de la versión exacta de los datos del cliente (para reproducir y detectar si cambian): tamaño, filas, fecha y SHA-256
+import hashlib
+from datetime import datetime
+FUENTES_CLIENTE = pd.DataFrame([{
+    "insumo": "Customer Potential" if Path(f) == Path(C.CLIENTE_CP) else "Ventas por PDV", "archivo": Path(f).name,
+    "ruta": str(Path(f).relative_to(BASE)), "bytes": Path(f).stat().st_size,
+    "filas": sum(1 for _ in open(f, encoding="utf-8", errors="ignore")) - 1,
+    "modificado": datetime.fromtimestamp(Path(f).stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+    "sha256": hashlib.sha256(Path(f).read_bytes()).hexdigest()} for f in [*C.CLIENTE_VENTAS, C.CLIENTE_CP]])
+FUENTES_CLIENTE.to_csv(C.PROC / f"fuentes_cliente_{C.CLIENTE}_00.csv", index=False)
+display(FUENTES_CLIENTE)
 descargar(C.URLS["mg"], C.ARCHIVOS["mg"])       # no vuelve a bajar si el zip ya existe y abre bien
 D_MG = extraer(C.ARCHIVOS["mg"], C.RAW / f"mg{C.MG_VERSION}_{C.ENT}")
 
@@ -75,6 +91,7 @@ D_MG = extraer(C.ARCHIVOS["mg"], C.RAW / f"mg{C.MG_VERSION}_{C.ENT}")
 # %%
 ventas = pd.concat([pd.read_csv(f) for f in C.CLIENTE_VENTAS], ignore_index=True)
 cp = pd.read_csv(C.CLIENTE_CP)
+cp[["cadena", "canal"]] = cadenas.clasificar(cp.pos_name)        # mismo criterio que las tiendas DENUE (src/cadenas.py)
 print("Archivos:", [f.name for f in C.CLIENTE_VENTAS], "|", C.CLIENTE_CP.name)
 print(f"Ventas: {ventas.shape} | CP: {cp.shape}")
 print("Llave ventas (pos_id, custom_category) única:", not ventas.duplicated(["pos_id", "custom_category"]).any(),
@@ -246,7 +263,7 @@ pdv["tasa_actividad"] = (pdv.meses_activos / pdv.meses_vida).clip(upper=1)
 pdv["recencia_meses"] = meses(pdv.ultima_venta, cierre)
 pdv["estado_actividad"] = pd.cut(pdv.recencia_meses, [-1, 0, 2, 99], labels=["activo", "en riesgo (1-2 m)", "inactivo (3+ m)"])
 pdv["alta_reciente"] = pdv.primera_venta > fin - pd.DateOffset(months=6)
-pdv = pdv.join(cp.set_index("pos_id")[["pos_name", "pos_subchannel", "pos_size_classification"]])
+pdv = pdv.join(cp.set_index("pos_id")[["pos_name", "pos_subchannel", "pos_size_classification", "cadena", "canal"]])
 print(f"Cierre de la ventana: {fin.date()} | PDV con venta, en CP y en {C.ZM_NOMBRE}: {len(pdv):,}")
 display(pdv.estado_actividad.value_counts().to_frame("PDV"))
 
@@ -336,6 +353,31 @@ hitos = km.S.reindex(range(1, 24)).ffill().loc[[6, 12, 18, 23]]
 display(pd.DataFrame({"S(t) total": hitos, **{k: v.reindex(range(1, 24)).ffill().loc[[6, 12, 18, 23]] for k, v in supervivencia.items()}}).T.round(3))
 
 # %% [markdown]
+# ### 4.5 Canal Moderno vs Tradicional de los PDV
+#
+# Mismo criterio que las tiendas DENUE (`src/cadenas.py`): **Moderno** = cadena identificada por nombre (farmacias de
+# cadena, Modelorama, tiendas de conveniencia…); **Tradicional** = independientes y Six. La venta se compara **dentro
+# del mismo subcanal** (el subcanal ya cambia la escala), con Mann-Whitney y δ de Cliff.
+
+# %%
+cp_zm = cp[cp.en_zm]
+canal_tab = pd.crosstab([cp_zm.canal, cp_zm.pos_subchannel], cp_zm.pos_id.isin(pdv.index).rename("con venta"), margins=True)
+display(canal_tab)
+display(cp_zm[cp_zm.canal == "Moderno"].groupby("cadena").agg(PDV=("pos_id", "size"), con_venta=("pos_id", lambda x: x.isin(pdv.index).sum()))
+        .sort_values("PDV", ascending=False))
+comp_canal = []
+for sc, g in pdv.groupby("pos_subchannel"):
+    mo, tr = g.loc[g.canal == "Moderno", "cajas_mes_vida"], g.loc[g.canal == "Tradicional", "cajas_mes_vida"]
+    if len(mo) >= 20 and len(tr) >= 20:
+        comp_canal.append({"subcanal": sc, "n Moderno": len(mo), "n Tradicional": len(tr), "mediana Moderno": mo.median(),
+                           "mediana Tradicional": tr.median(), "cliff_delta (M vs T)": eda.cliff_delta(mo, tr),
+                           "p": stats.mannwhitneyu(mo, tr).pvalue})
+comp_canal = pd.DataFrame(comp_canal)
+if len(comp_canal):
+    comp_canal["q_BH"] = stats.false_discovery_control(comp_canal.p, method="bh")
+display(comp_canal)
+
+# %% [markdown]
 # ## 5. Señales del CP: ¿cuáles aportan información?
 #
 # Tres tipos de problema a descartar antes de usar una columna: **redundancia** (duplica otra), **fuga** (es una función
@@ -349,7 +391,7 @@ display(red)
 x = cp.set_index("pos_id")
 print("Identidad PotentialQuantitativeFinal = Quantitative × EstimatedToCover:",
       bool(np.allclose(x.PotentialQuantitativeFinal_TotalPortafolio, x.PotentialQuantitative_TotalPortafolio * x.PotentialEstimatedToCover_TotalPortafolio, equal_nan=True)))
-cruce = pdv.join(x.drop(columns=["pos_name", "pos_subchannel", "pos_size_classification"]), how="left")
+cruce = pdv.join(x.drop(columns=["pos_name", "pos_subchannel", "pos_size_classification", "cadena", "canal"]), how="left")
 rel = (cruce.PotentialQuantitative_TotalPortafolio / cruce.cajas_mes_activo - 1).abs()
 print(f"PotentialQuantitative vs cajas_mes_activo: |diferencia relativa| mediana {rel.median():.4f}, p95 {rel.quantile(.95):.4f}; "
       f"idénticas (±0.01 cajas) en {np.isclose(cruce.PotentialQuantitative_TotalPortafolio, cruce.cajas_mes_activo, atol=0.011).mean():.1%}")
@@ -376,6 +418,28 @@ fuga["veredicto"] = np.where(fuga.exactitud_CV > 0.95, "FUGA: función de la ven
                     np.where(fuga.exactitud_CV - fuga["línea base (clase mayoritaria)"] > 0.1, "asociada a la venta", "poco asociada"))
 display(fuga)
 display(cruce.groupby("size_class").cajas_mes_activo.agg(["count", "min", "max"]).sort_values("min"))
+
+# %% [markdown]
+# ### 5.1b ¿La clase de potencial del CP depende del tamaño actual de la tienda?
+#
+# El árbol de arriba mide si la clase se **reconstruye** con la venta (exactitud vs clase mayoritaria); no detecta que
+# ciertas clases **solo existan** en tiendas grandes. Por construcción `PotentialQuantitativeFinal` = `PotentialQuantitative`
+# (≈ venta actual) × `PotentialEstimatedToCover` (brecha relativa vs el comparable), así que el potencial *absoluto* escala con
+# la venta actual. Se cruza la clase con los deciles de venta y se prueba la independencia (χ², V de Cramér); la **brecha
+# relativa** es la parte del CP que no depende del tamaño.
+
+# %%
+dec = pd.qcut(cruce.cajas_mes_activo.rank(method="first"), 10, labels=[f"D{i}" for i in range(1, 11)])
+t_cls = pd.crosstab(dec, cruce.PotentialQualitative_TotalPortafolio).reindex(columns=["Low", "Moderate", "High", "Very High"]).fillna(0).astype(int)
+chi = stats.chi2_contingency(t_cls)
+vh_inf = t_cls.loc[[f"D{i}" for i in range(1, 6)], "Very High"].sum() / t_cls["Very High"].sum()
+etc = cruce[["PotentialEstimatedToCover_TotalPortafolio", "cajas_mes_activo"]].dropna()
+rho_etc = stats.spearmanr(etc.iloc[:, 0], etc.iloc[:, 1])
+rho_fin = stats.spearmanr(*cruce[["PotentialQuantitativeFinal_TotalPortafolio", "cajas_mes_activo"]].dropna().T.values)
+clase_tamano = (f"Very High: {vh_inf:.0%} de sus tiendas en la mitad inferior de venta (D1–D5); χ² p = {chi.pvalue:.0e}, "
+                f"V de Cramér = {eda.cramer_v(t_cls):.2f}. Potencial final vs venta ρ = {rho_fin[0]:+.2f}; brecha relativa vs venta ρ = {rho_etc[0]:+.2f}.")
+print(clase_tamano)
+display(t_cls)
 
 # %% [markdown]
 # ### 5.2 Dependencia con la venta: Spearman con IC95, Pearson sobre log1p e información mutua (q de BH)
@@ -457,12 +521,14 @@ senales = pd.DataFrame([
     ("tasa_actividad", "USAR", "regularidad de compra (meses activos / meses de vida)"),
     ("cajas_mes_activo (= avg_monthly_boxes)", "USAR CON CUIDADO", "sesgado al alza en PDV intermitentes o inactivos"),
     ("PotentialQuantitative_*", "NO USAR · fuga", f"es la venta mensual actual: |dif. relativa| mediana {rel.median():.4f}"),
-    ("PotentialQuantitativeFinal_*", "USAR · potencial incremental", f"Quantitative × EstimatedToCover; {rho('PotentialQuantitativeFinal_TotalPortafolio')}; dentro de subcanal {rng_estr('PotentialQuantitativeFinal_TotalPortafolio')}"),
+    ("PotentialQuantitativeFinal_*", "USAR · clasificar (potencial futuro, no decisivo)", f"Quantitative × EstimatedToCover; {rho('PotentialQuantitativeFinal_TotalPortafolio')}; dentro de subcanal {rng_estr('PotentialQuantitativeFinal_TotalPortafolio')}"),
     ("PotentialEstimatedToCover_*", "USAR", f"brecha vs PDV comparable; {rho('PotentialEstimatedToCover_TotalPortafolio')}"),
-    ("PotentialRange / PotentialQualitative", "REDUNDANTE · fuga parcial", f"discretización del potencial; {acc('PotentialQualitative_TotalPortafolio')}"),
+    ("PotentialRange / PotentialQualitative", "USAR · clase de potencial futuro (clasificación), leer junto al tamaño",
+     f"clase Very High → Low del potencial absoluto; clasifica, no decide; {acc('PotentialQualitative_TotalPortafolio')}; {clase_tamano}"),
     ("columnas *_CustomCat_sueros", "REDUNDANTE", "≈ *_TotalPortafolio (ρ ≈ 1): la venta solo trae la categoría sueros"),
     ("Comparative_Client_ID_*", "SOLO TRAZABILIDAD", "PDV de referencia usado para el potencial; no es predictor"),
     ("pos_subchannel", "USAR · segmentar", f"{eps('pos_subchannel')}; comparar PDV dentro de su subcanal"),
+    ("canal (Moderno / Tradicional)", "USAR · entregar por separado", f"{(cp_zm.canal == 'Moderno').sum():,} PDV Moderno de {len(cp_zm):,}; misma regla que DENUE (src/cadenas.py)"),
     ("size_class", "NO USAR · fuga", f"{eps('size_class')}; {acc('size_class')}: son cortes de la propia venta"),
     ("pos_size_classification", "USAR", f"{eps('pos_size_classification')}; {acc('pos_size_classification')}; existe para todo el CP"),
     ("cluster", "RUIDO", f"{eps('cluster')}; {rho('cluster')}; sin diccionario"),
@@ -498,15 +564,23 @@ hallazgos = pd.DataFrame([
     ("PotentialQuantitative = venta actual", f"|dif. relativa| con cajas_mes_activo: mediana {rel.median():.4f}; idénticas en "
                                              f"{np.isclose(cruce.PotentialQuantitative_TotalPortafolio, cruce.cajas_mes_activo, atol=0.011).mean():.1%}.",
      "Fuga: no usar como potencial ni como predictor."),
-    ("Potencial incremental", f"PotentialQuantitativeFinal = Quantitative × EstimatedToCover; {rho('PotentialQuantitativeFinal_TotalPortafolio')} con la venta y "
+    ("CP: potencial futuro", f"PotentialQuantitativeFinal = Quantitative × EstimatedToCover; {rho('PotentialQuantitativeFinal_TotalPortafolio')} con la venta y "
                               f"dentro de subcanal: {rng_estr('PotentialQuantitativeFinal_TotalPortafolio')}.",
-     "Aporta información distinta a la venta; usarlo por subcanal (no es comparable entre subcanales)."),
+     "Mide el potencial futuro de cada cliente frente a su comparable: variable de CLASIFICACIÓN (clase Very High → Low), no decisiva. En el 05 acompaña a los clústeres Golden Stores."),
+    ("Clase CP y tamaño", clase_tamano,
+     "La clase mide potencial ABSOLUTO (venta actual × brecha): las clases altas solo aparecen en tiendas que ya venden. Sigue siendo variable de "
+     "clasificación; para comparar tiendas de distinto tamaño usar la brecha relativa (PotentialEstimatedToCover), que va en el Excel del 05."),
     ("size_class", f"{acc('size_class')} (línea base {fuga.set_index('columna').loc['size_class', 'línea base (clase mayoritaria)']:.0%}); {eps('size_class')}.",
      "Fuga: son cortes de la propia venta. No usar."),
     ("Tamaño del PDV", f"pos_size_classification {eps('pos_size_classification')}; {acc('pos_size_classification')}; existe para todo el CP.", "Usar para segmentar."),
     ("Subcanal", f"{eps('pos_subchannel')}. Mediana de cajas/mes: " + " · ".join(f"{k_.title()} {v_:.1f}" for k_, v_ in sub.items()) +
                  f". Mayor diferencia: {par_top.A.title()} vs {par_top.B.title()} (δ = {par_top.cliff_delta:+.2f}, {par_top.efecto}).",
      "Comparar PDV siempre dentro de su subcanal."),
+    ("Canal", f"{(cp_zm.canal == 'Moderno').sum():,} PDV Moderno ({(cp_zm.canal == 'Moderno').mean():.1%}) y {(cp_zm.canal == 'Tradicional').sum():,} Tradicional en la ZM. "
+              f"Moderno = " + ", ".join(f"{k} {v}" for k, v in cp_zm[cp_zm.canal == 'Moderno'].cadena.value_counts().head(5).items()) + ". "
+              + ("Dentro de subcanal: " + "; ".join(f"{r['subcanal'].title()} mediana M {r['mediana Moderno']:.1f} vs T {r['mediana Tradicional']:.1f} (δ = {r['cliff_delta (M vs T)']:+.2f})"
+                                                    for _, r in comp_canal.iterrows()) if len(comp_canal) else ""),
+     "El CP casi no tiene cadenas de conveniencia/autoservicio (OXXO, Walmart): probablemente son cuentas clave fuera del CP (ver 'Ventas sin ubicar')."),
     ("Actividad", f"Al cierre ({fin:%b-%Y}): activos {act.get('activo', 0):.0%} · en riesgo {act.get('en riesgo (1-2 m)', 0):.0%} · "
                   f"inactivos {act.get('inactivo (3+ m)', 0):.0%}. Kaplan-Meier: S(6 m) = {hitos.loc[6]:.2f}, S(12 m) = {hitos.loc[12]:.2f}, S(23 m) = {hitos.loc[23]:.2f}.",
      "avg_monthly_boxes sobreestima a los inactivos: usar cajas_mes_vida."),
@@ -533,7 +607,7 @@ with pd.option_context("display.max_colwidth", None):
 # %%
 salida = (cp.set_index("pos_id")
           .drop(columns=[c for c in cp.columns if c.endswith("_CustomCat_sueros")] + ["pos_latitude", "pos_longitude"])
-          .join(pdv.drop(columns=["pos_name", "pos_subchannel", "pos_size_classification"]), how="left"))
+          .join(pdv.drop(columns=["pos_name", "pos_subchannel", "pos_size_classification", "cadena", "canal"]), how="left"))
 salida["con_venta"] = salida.cajas_total.notna()
 salida.index.name = "pos_id_cp"
 salida.reset_index().to_parquet(C.PROC / f"pdv_{C.CLIENTE}_{C.SLUG}.parquet", index=False)
@@ -542,6 +616,7 @@ vz[~vz.en_cp].to_parquet(C.PROC / f"ventas_sin_cp_{C.CLIENTE}_{C.SLUG}.parquet",
 out = C.OUT / f"00_validacion_ventas_cp_{C.CLIENTE}_{C.SLUG}.xlsx"
 with pd.ExcelWriter(out) as xw:
     hallazgos.to_excel(xw, sheet_name="Hallazgos", index=False)
+    FUENTES_CLIENTE.to_excel(xw, sheet_name="Datos del cliente", index=False)
     senales.to_excel(xw, sheet_name="Señales", index=False)
     llave.to_excel(xw, sheet_name="Llave por prefijo")
     sesgo.to_excel(xw, sheet_name="Sesgo ventas sin ubicar", index=False)
@@ -554,6 +629,8 @@ with pd.ExcelWriter(out) as xw:
     estr.to_excel(xw, sheet_name="Por subcanal", index=False)
     cat.to_excel(xw, sheet_name="Categoricas", index=False)
     pares.to_excel(xw, sheet_name="Pares subcanal", index=False)
+    canal_tab.to_excel(xw, sheet_name="Canal")
+    comp_canal.to_excel(xw, sheet_name="Canal por subcanal", index=False)
     top.to_excel(xw, sheet_name="Atipicos")
     vz[~vz.en_cp].sort_values("total_boxes_sold", ascending=False).to_excel(xw, sheet_name="Ventas sin ubicar", index=False)
 print(f"Guardado: {C.PROC / f'pdv_{C.CLIENTE}_{C.SLUG}.parquet'} ({len(salida):,} PDV, {salida.con_venta.sum():,} con venta, "

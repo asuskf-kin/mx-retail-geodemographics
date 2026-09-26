@@ -54,8 +54,11 @@ _COB_ESTADO = f"{NOM_ENT} ({ENT}) → se filtran los {len(ZM_MUNICIPIOS)} munici
 
 # ---- Fuentes oficiales: UNICO lugar con las URLs (los notebooks las muestran y verifican con HEAD) ----
 # Verificadas el 2026-09-24. Cada entrada: nombre, edicion, pagina oficial y URL de descarga del estado.
-MG_VERSION = "2025"                 # Marco Geoestadistico: "2025" (vigente) o "2020" (el ligado al Censo 2020)
-_MG_UPC = {"2020": "889463807469", "2025": "794551163061"}   # carpeta / UPC del producto en INEGI
+# Marco Geoestadistico: "2025eic" (el mas reciente: edicion 2026 de la Encuesta Intercensal 2025, datos a nov-2025,
+# publicado 2026-08-27), "2025" (UPC 794551163061, datos a jul-2025) o "2020" (el ligado al Censo 2020)
+MG_VERSION = "2025eic"
+_MG_UPC = {"2020": "889463807469", "2025": "794551163061", "2025eic": "794551196649"}   # carpeta / UPC del producto en INEGI
+_MG_NOMBRE = {"2020": "2020", "2025": "2025", "2025eic": "Encuesta Intercensal 2025 (edición 2026)"}
 
 FUENTES = {
     "ageb": dict(
@@ -65,6 +68,13 @@ FUENTES = {
         pagina="https://www.inegi.org.mx/programas/ccpv/2020/#datos_abiertos",
         url=f"https://www.inegi.org.mx/contenidos/programas/ccpv/2020/datosabiertos/ageb_manzana/ageb_mza_urbana_{ENT}_cpv2020_csv.zip",
         archivo=RAW / f"ageb_mza_urbana_{ENT}_cpv2020_csv.zip"),
+    "iter": dict(
+        cobertura=_COB_ESTADO,
+        nombre="Censo de Población y Vivienda 2020 · Principales resultados por localidad (ITER)",
+        edicion="2020 (datos abiertos, CSV)", institucion="INEGI",
+        pagina="https://www.inegi.org.mx/programas/ccpv/2020/#datos_abiertos",
+        url=f"https://www.inegi.org.mx/contenidos/programas/ccpv/2020/datosabiertos/iter/iter_{ENT}_cpv2020_csv.zip",
+        archivo=RAW / f"iter_{ENT}_cpv2020_csv.zip"),
     "micro": dict(
         cobertura=_COB_ESTADO,
         nombre="Censo de Población y Vivienda 2020 · Microdatos del cuestionario ampliado (muestra)",
@@ -74,12 +84,19 @@ FUENTES = {
         archivo=RAW / f"Censo2020_CA_{ABREV_MICRO}_csv.zip"),
     "mg": dict(
         cobertura=_COB_ESTADO,
-        nombre=f"Marco Geoestadístico {MG_VERSION} · AGEB, manzanas y localidades del estado",
-        edicion=f"{MG_VERSION} (UPC {_MG_UPC[MG_VERSION]}, shapefile)", institucion="INEGI",
+        nombre=f"Marco Geoestadístico {_MG_NOMBRE[MG_VERSION]} · AGEB, manzanas y localidades del estado",
+        edicion=f"{_MG_NOMBRE[MG_VERSION]} (UPC {_MG_UPC[MG_VERSION]}, shapefile)", institucion="INEGI",
         pagina=f"https://www.inegi.org.mx/app/biblioteca/ficha.html?upc={_MG_UPC[MG_VERSION]}",
         url=("https://www.inegi.org.mx/contenidos/productos/prod_serv/contenidos/espanol/bvinegi/productos/"
              f"geografia/marcogeo/{_MG_UPC[MG_VERSION]}/{ENT}_{MG_SLUG}.zip"),
         archivo=RAW / f"mg{MG_VERSION}_{ENT}_{MG_SLUG}.zip"),
+    "eic": dict(
+        cobertura="Nacional → hogares y viviendas por municipio de " + ", ".join(ZM_MUNICIPIOS.values()),
+        nombre="Encuesta Intercensal 2025 · Principales resultados por municipio y localidad de 50 000 y más",
+        edicion="2025 (publicada 2026-09-22; estimaciones con CV)", institucion="INEGI",
+        pagina="https://www.inegi.org.mx/programas/eic/2025/",
+        url="https://www.inegi.org.mx/contenidos/programas/eic/2025/datosabiertos/conjunto_de_datos_eic2025_105_csv.zip",
+        archivo=RAW / "conjunto_de_datos_eic2025_105_csv.zip"),
     "enigh": dict(
         cobertura="Nacional → se usan hogares urbanos de " + ", ".join(f"{ESTADOS[e]} ({e})" for e in ENIGH_ESTADOS),
         nombre="Encuesta Nacional de Ingresos y Gastos de los Hogares (ENIGH) 2024 · nueva serie",
@@ -118,6 +135,7 @@ CLIENTE_VENTAS = sorted((CLIENTE_RAW / "ventas").glob("part-*.csv"))
 CLIENTE_CP = CLIENTE_RAW / "cp" / "conservative_scenario.csv"
 # Area de influencia de cada punto de venta: hexagonos H3 cuyo centro esta a <= RADIO_PDV_M del punto.
 # res 10: arista ~76 m, area ~0.015 km2 (del tamano de una manzana) -> 300 m ~ 19 hexagonos (~0.28 km2).
+AJUSTE_HOGARES = "eic2025"      # 04: hogares 2020 × crecimiento de población 2020→2025 por municipio (EIC 2025); None = Censo 2020
 H3_RES = 10
 RADIO_PDV_M = 300          # definido con el usuario: el area llega hasta 300 m (500 m es demasiado lejos)
 

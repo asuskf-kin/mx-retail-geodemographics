@@ -32,6 +32,7 @@ import pandas as pd
 import requests
 
 import config as C
+import cadenas
 from descargas import descargar, registrar_fuentes, verificar_fuentes
 from IPython.display import display
 
@@ -72,49 +73,8 @@ t["longitud"] = pd.to_numeric(t.longitud, errors="coerce")
 t = t.dropna(subset=["latitud", "longitud"])
 t["formato"] = t.codigo_act.map(C.SCIAN_TIENDAS)
 
-# cadenas: patron sobre nombre + razon social (orden importa: el primero que coincide)
-CADENAS = [
-    ("Bara", r"^(?!ABARROTES)[^|]*(?:SUPER BARA|TIENDAS? BARA)\b"),  # FEMSA; comparte razon social con OXXO
-    ("OXXO", r"\bOXXO\b|CADENA COMERCIAL OXXO"),
-    ("7-Eleven", r"7[\s-]?ELEVEN|SEVEN\s?L?ELEVEN|SIETE ONCE"),
-    ("Circle K", r"CIRCLE\s*K\b|CIRCULO K\b"),
-    ("Kiosko", r"^(?!ABARROTES).*\bKIOSKO\b"),         # "ABARROTES KIOSKO" = tienda independiente
-    ("Super Aki", r"^(?!TIENDA DE ABARROTES AKI).*(?:\bAKI\b|SUPER\s*AKI|GRUPO AKI|DAC\b)"),
-    ("Six", r"\bSIX\b"),
-    ("Bodega Aurrera", r"AURRERA"),
-    ("Walmart", r"\bWAL\s*-?\s*MART\b"),              # no "WALMARTHA"
-    ("Sam's Club", r"\bSAM'?S CLUB\b"),                 # no "ABARROTES SAMS"
-    ("Soriana", r"SORIANA|MEGA SORIANA|CITY CLUB"),
-    ("Chedraui", r"CHEDRAUI"),
-    ("La Comer / City Market / Fresko", r"LA COMER|CITY MARKET|FRESKO|SUMESA"),
-    ("Costco", r"COSTCO"),
-    ("Super San Francisco de Asís", r"SAN FRANCISCO DE ASIS"),
-    ("Super Willys", r"WILLYS|SUPER\s*WILLY"),
-    ("Tiendas 3B", r"\b3\s?B\b|TIENDAS TRES B|BBB"),
-    ("Tiendas Neto", r"^(?!.*EL NETO).*\bNETO\b"),
-    ("Merza / Dax", r"\bMERZA\b|\bDAX\b"),
-    ("Extra", r"\bEXTRA\b"),
-    ("Dunosusa", r"DUNOSUSA|DONOSUSA|\bDUNO\b"),
-    ("Go Mart", r"GO\s?MART"),
-    ("Super Farahon", r"FARAHON"),
-    ("Waldo's", r"\bWALDO"),                           # no "OSWALDO"
-    ("La Macarena", r"^(?!.*TENDEJON).*MACARENA"),
-    ("Delimart (Pemex)", r"DELIMART|PEME\d"),
-    ("Toyo Foods", r"TOYO FOODS"),
-    # Guadalajara
-    ("Su Super", r"^SU SUPER\b"),
-    ("Abarrotes y Bebidas MR", r"ABARROTES Y BEBIDAS MR\b"),
-    ("Super Kadis", r"SUPER KADIS"),
-    ("Area 24.7", r"AREA 24\.?7"),
-    ("Tiendas IMSS / ISSSTE", r"TIENDA DEL IMSS|SUPERISSSTE"),
-]
-texto = (t.nom_estab + " | " + t.raz_social).str.upper()
-t["cadena"] = "Independiente"
-for nombre, patron in reversed(CADENAS):
-    t.loc[texto.str.contains(patron, regex=True), "cadena"] = nombre
-# Six (Grupo Modelo) son abarrotes independientes afiliados -> canal tradicional
-CADENAS_TRADICIONALES = {"Independiente", "Six"}
-t["canal"] = np.where(t.cadena.isin(CADENAS_TRADICIONALES), "Tradicional", "Moderno")
+# cadena y canal: patrones en src/cadenas.py (única fuente, compartida con los PDV de Bepensa)
+t[["cadena", "canal"]] = cadenas.clasificar(t.nom_estab + " | " + t.raz_social)
 
 # tamaño de establecimiento y antiguedad en DENUE
 t["fecha_alta"] = pd.to_datetime(t.fecha_alta, format="%Y-%m", errors="coerce")

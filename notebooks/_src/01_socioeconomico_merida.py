@@ -16,15 +16,18 @@
 # | # | Fuente | Edición | Página oficial | Uso |
 # |---|---|---|---|---|
 # | 1 | INEGI · Censo 2020, Principales resultados por AGEB y manzana urbana | 2020 | https://www.inegi.org.mx/programas/ccpv/2020/#datos_abiertos | Totales por AGEB (restricciones) y hogares por manzana |
+# | 1b | INEGI · Censo 2020, Principales resultados por localidad (ITER) | 2020 | https://www.inegi.org.mx/programas/ccpv/2020/#datos_abiertos | Hogares de localidades rurales (fuera de las AGEB urbanas) |
+# | 1c | INEGI · Encuesta Intercensal 2025, resultados por municipio (publicada 2026-09-22) | 2025 | https://www.inegi.org.mx/programas/eic/2025/ | Crecimiento de población 2020→2025 por municipio (actualiza la demanda del notebook 04) |
 # | 2 | INEGI · Censo 2020, Microdatos del cuestionario ampliado | 2020 | https://www.inegi.org.mx/programas/ccpv/2020/#microdatos | Hogares donantes |
-# | 3 | INEGI · Marco Geoestadístico | 2025 (UPC 794551163061) | https://www.inegi.org.mx/app/biblioteca/ficha.html?upc=794551163061 | Polígonos de AGEB, manzana y localidad |
+# | 3 | INEGI · Marco Geoestadístico de la Encuesta Intercensal 2025 (el más reciente) | edición 2026, datos a nov-2025 (UPC 794551196649; `MG_VERSION` en config) | https://www.inegi.org.mx/app/biblioteca/ficha.html?upc=794551196649 | Polígonos de AGEB, manzana y localidad |
 # | 4 | INEGI · ENIGH 2024, nueva serie (la más reciente) | 2024 | https://www.inegi.org.mx/programas/enigh/nc/2024/#datos_abiertos | Imputar *número* de baños completos y autos |
 # | 5 | AMAI · Regla NSE 2024 | vigente desde ene-2024 | https://www.amai.org/NSE/index.php?queVeo=NSE2024 | Puntos y cortes del NSE (`src/nse.py`) |
 #
 # URL de descarga por estado (`{ENT}` = clave INEGI, `{abrev}` y `{slug}` en `config.py`):
 # 1. `https://www.inegi.org.mx/contenidos/programas/ccpv/2020/datosabiertos/ageb_manzana/ageb_mza_urbana_{ENT}_cpv2020_csv.zip`
+# 1b. `https://www.inegi.org.mx/contenidos/programas/ccpv/2020/datosabiertos/iter/iter_{ENT}_cpv2020_csv.zip`
 # 2. `https://www.inegi.org.mx/contenidos/programas/ccpv/2020/microdatos/Censo2020_CA_{abrev}_csv.zip`
-# 3. `https://www.inegi.org.mx/contenidos/productos/prod_serv/contenidos/espanol/bvinegi/productos/geografia/marcogeo/794551163061/{ENT}_{slug}.zip`
+# 3. `https://www.inegi.org.mx/contenidos/productos/prod_serv/contenidos/espanol/bvinegi/productos/geografia/marcogeo/794551196649/{ENT}_{slug}.zip` (antes 794551163061 = MG 2025)
 # 4. `https://www.inegi.org.mx/contenidos/programas/enigh/nc/2024/datosabiertos/conjunto_de_datos_enigh2024_ns_csv.zip`
 # 5. Nota metodológica: `https://www.amai.org/descargas/NOTA_METODOLOGICA_NSE_AMAI_2024_v6.pdf`
 #
@@ -75,22 +78,24 @@ print(f"Repo: {BASE} | ciudad: {C.ZM_NOMBRE} (CIUDAD={C.CIUDAD}) | Python {platf
 # %%
 print("Regla NSE:", C.REGLA_NSE["nombre"], "|", C.REGLA_NSE["pagina"])
 print(f"Ciudad: {C.ZM_NOMBRE} · {C.NOM_ENT} ({C.ENT}) · municipios: " + ", ".join(f"{v} ({k})" for k, v in C.ZM_MUNICIPIOS.items()))
-display(verificar_fuentes(C.FUENTES, ["ageb", "micro", "mg", "enigh"]))
+display(verificar_fuentes(C.FUENTES, ["ageb", "iter", "micro", "mg", "enigh", "eic"]))
 
 # %%
-for k in ["ageb", "micro", "mg", "enigh"]:
+for k in ["ageb", "iter", "micro", "mg", "enigh", "eic"]:
     print(f"{k}: {C.URLS[k]}")
     descargar(C.URLS[k], C.ARCHIVOS[k])
 
 
 
 D_AGEB = extraer(C.ARCHIVOS["ageb"], C.RAW / f"ageb_{C.ENT}")
+D_ITER = extraer(C.ARCHIVOS["iter"], C.RAW / f"iter_{C.ENT}")
 D_MICRO = extraer(C.ARCHIVOS["micro"], C.RAW / f"micro_{C.ENT}")
 D_MG = extraer(C.ARCHIVOS["mg"], C.RAW / f"mg{C.MG_VERSION}_{C.ENT}")
 D_ENIGH = extraer(C.ARCHIVOS["enigh"], C.RAW / "enigh2024")
+D_EIC = extraer(C.ARCHIVOS["eic"], C.RAW / "eic2025_105")
 
 # registro de las versiones exactas usadas (para depurar / reproducir): data/processed/<ciudad>/fuentes_usadas_01.csv
-registrar_fuentes(C.FUENTES, ["ageb", "micro", "mg", "enigh"], C.PROC / "fuentes_usadas_01.csv")[["fuente", "edicion", "archivo_local", "bytes", "descargado"]]
+registrar_fuentes(C.FUENTES, ["ageb", "iter", "micro", "mg", "enigh", "eic"], C.PROC / "fuentes_usadas_01.csv")[["fuente", "edicion", "archivo_local", "bytes", "descargado"]]
 
 # %% [markdown]
 # ## 2. Imputación de baños completos y autos con ENIGH 2024
@@ -347,7 +352,121 @@ cm = gmz.set_index("CVEGEO").geometry.representative_point().to_crs(4326)
 mz["lat"], mz["lon"] = mz.CVEGEO.map(cm.y), mz.CVEGEO.map(cm.x)
 sin_poligono = mz.lat.isna() & (mz.hog > 0)
 print(f"Manzanas del Censo sin polígono en el Marco Geoestadístico {C.MG_VERSION}: {sin_poligono.sum():,} "
-      f"({mz.hog[sin_poligono].sum():,.0f} hogares, {mz.hog[sin_poligono].sum() / mz.hog.sum():.2%}) → no entran en los radios")
+      f"({mz.hog[sin_poligono].sum():,.0f} hogares, {mz.hog[sin_poligono].sum() / mz.hog.sum():.2%}) → en los radios del 03 no entran; "
+      "en el 04 se reparten sobre su AGEB")
+# Polígonos de manzana para repartir sus hogares por área (notebook 04): los hogares ocupan toda la manzana, no un punto.
+# Las manzanas del Censo sin polígono en el Marco vigente se reparten sobre el polígono de su AGEB (quedan dentro, no se pierden).
+mzg = mz.dropna(subset=["share"]).merge(gmz[["CVEGEO", "geometry"]], on="CVEGEO", how="left")
+falta = mzg.geometry.isna()
+mzg.loc[falta, "geometry"] = mzg.loc[falta, "CVEGEO_AGEB"].map(geo.set_index("CVEGEO").geometry).values
+mzg["geom_ageb"] = falta
+mzg = mzg[mzg.geometry.notna()]
+gpd.GeoDataFrame(mzg[["CVEGEO", "CVEGEO_AGEB", "hog", "share", "geom_ageb", "geometry"]], geometry="geometry", crs=gmz.crs).to_file(
+    C.PROC / f"manzanas_{C.SLUG}.gpkg", driver="GPKG")
+print(f"Polígonos de manzana guardados: {len(mzg):,} ({falta.sum():,} usan el polígono de su AGEB)")
 mz = mz.dropna(subset=["lat", "share"])
 mz[["CVEGEO", "CVEGEO_AGEB", "hog", "share", "lat", "lon"]].to_parquet(C.PROC / f"manzanas_{C.SLUG}.parquet", index=False)
 print("Guardado:", out_xlsx, f"| manzanas: {len(mz):,}")
+
+# %% [markdown]
+# ## 8. Localidades rurales de la ZM (fuera de las AGEB urbanas)
+#
+# El Censo por AGEB y manzana solo cubre localidades **urbanas**. Los hogares de las localidades rurales (comisarías,
+# rancherías) también son demanda de las tiendas cercanas, así que deben quedar **dentro** de las áreas de 300 m:
+# * **Hogares:** ITER 2020 (`TOTHOG` por localidad; si es confidencial `*`, se usa `VIVPAR_HAB`, y si también, 1).
+# * **Dónde:** manzanas rurales del Marco Geoestadístico vigente de esa localidad (reparto por área); si no tiene,
+#   el polígono de la localidad; si solo es un punto, un círculo de 100 m.
+# * **Perfil:** hogares de la muestra censal en localidades de < 2,500 habitantes (`TAMLOC` = 1) del mismo municipio
+#   (con < 30 hogares en la muestra, los de toda la ZM). Mismo NSE AMAI 2024 que las AGEB.
+
+# %%
+f_iter = next(D_ITER.rglob("conjunto_de_datos_iter_*.csv"))
+try:
+    it = pd.read_csv(f_iter, dtype=str, encoding="utf-8-sig")
+except UnicodeDecodeError:
+    it = pd.read_csv(f_iter, dtype=str, encoding="latin-1")
+it = it[it.MUN.isin(C.ZM_MUNICIPIOS) & ~it.LOC.isin(["0000", "9998", "9999"])].copy()
+it["CVEGEO"] = C.ENT + it.MUN + it.LOC
+urbanas = set(ag.CVEGEO.str[:9])
+it = it[~it.CVEGEO.isin(urbanas)]
+it["hog"] = pd.to_numeric(it.TOTHOG, errors="coerce").fillna(pd.to_numeric(it.VIVPAR_HAB, errors="coerce")).fillna(1.0)
+it = it[it.hog > 0]
+
+# perfil rural por municipio (muestra censal expandida)
+rural = h.TAMLOC.astype(str).eq("1") & h.MUN.isin(C.ZM_MUNICIPIOS)
+prof_zm = cat[rural].mul(h.FACTOR[rural], axis=0).sum() / h.FACTOR[rural].sum()
+def perfil_rural(mun):
+    r = rural & h.MUN.eq(mun)
+    return cat[r].mul(h.FACTOR[r], axis=0).sum() / h.FACTOR[r].sum() if r.sum() >= 30 else prof_zm
+PERFIL_RURAL = pd.DataFrame({m: perfil_rural(m) for m in it.MUN.unique()}).T
+
+# geometría: manzanas rurales → polígono de localidad → punto con 100 m
+mzr = gpd.read_file(D_MG / "conjunto_de_datos" / f"{C.ENT}m.shp", columns=["CVEGEO", "AMBITO"])
+mzr = mzr[mzr.CVEGEO.str[:9].isin(it.CVEGEO)].assign(LOC9=lambda x: x.CVEGEO.str[:9])
+lpol = gpd.read_file(D_MG / "conjunto_de_datos" / f"{C.ENT}l.shp", columns=["CVEGEO"]).to_crs(mzr.crs)
+lpt = gpd.read_file(D_MG / "conjunto_de_datos" / f"{C.ENT}lpr.shp", columns=["CVEGEO"]).to_crs(mzr.crs)
+partes = [mzr[["LOC9", "geometry"]].rename(columns={"LOC9": "CVEGEO_LOC"}).assign(fuente_geom="manzanas rurales")]
+sin_mz = set(it.CVEGEO) - set(mzr.LOC9)
+p_l = lpol[lpol.CVEGEO.isin(sin_mz)]
+partes.append(p_l.rename(columns={"CVEGEO": "CVEGEO_LOC"}).assign(fuente_geom="polígono de localidad"))
+sin_pol = sin_mz - set(p_l.CVEGEO)
+p_p = lpt[lpt.CVEGEO.isin(sin_pol)].drop_duplicates("CVEGEO")
+p_p = p_p.assign(geometry=p_p.geometry.buffer(100))
+partes.append(p_p.rename(columns={"CVEGEO": "CVEGEO_LOC"}).assign(fuente_geom="punto (100 m)"))
+rur = gpd.GeoDataFrame(pd.concat(partes, ignore_index=True), geometry="geometry", crs=mzr.crs)
+rur["w"] = rur.geometry.area / rur.geometry.area.groupby(rur.CVEGEO_LOC).transform("sum")
+rur = rur.merge(it[["CVEGEO", "MUN", "NOM_LOC", "hog"]], left_on="CVEGEO_LOC", right_on="CVEGEO").drop(columns="CVEGEO")
+rur = rur.assign(hog=rur.hog.to_numpy(float) * rur.w.to_numpy(float))
+P = PERFIL_RURAL.reindex(rur.MUN).to_numpy(dtype=float, copy=True)          # pandas 3: to_numpy() es de solo lectura
+for grupo, cols in C.GRUPOS.items():                   # cada grupo suma los hogares de la pieza
+    idx = [C.CATEGORIAS.index(c) for c in cols]
+    P[:, idx] = P[:, idx] / P[:, idx].sum(axis=1, keepdims=True)
+rur = rur.assign(**{f"HHs_{c}": rur.hog.to_numpy(float) * P[:, k] for k, c in enumerate(C.CATEGORIAS)})
+sin_geom = set(it.CVEGEO) - set(rur.CVEGEO_LOC)
+rur.drop(columns="w").to_file(C.PROC / f"rurales_{C.SLUG}.gpkg", driver="GPKG")
+print(f"Localidades rurales en la ZM: {len(it):,} con {it.hog.sum():,.0f} hogares "
+      f"({it.hog.sum() / (it.hog.sum() + ag.TOTHOG.sum()):.1%} de los hogares de la ZM) | sin geometría: {len(sin_geom)} "
+      f"({it[it.CVEGEO.isin(sin_geom)].hog.sum():,.0f} hogares)")
+print(rur.groupby("fuente_geom").agg(localidades=("CVEGEO_LOC", "nunique"), hogares=("hog", "sum")).round(0))
+print(f"Hogares rurales en la muestra: {rural.sum():,} | municipios con perfil propio: "
+      f"{sum((rural & h.MUN.eq(m)).sum() >= 30 for m in it.MUN.unique())} de {it.MUN.nunique()}")
+PERFIL_RURAL.mul(100).round(1)
+
+# %% [markdown]
+# ## 9. Actualización a 2025 con la Encuesta Intercensal 2025 (por municipio)
+#
+# La EIC 2025 (INEGI, publicada 2026-09-22) es la cifra oficial más reciente, pero **solo llega a municipio** (no hay AGEB
+# ni manzana), así que la estructura por AGEB y manzana sigue siendo la del Censo 2020 y se escala por municipio.
+# * **Se usa el crecimiento de población** (`POBTOT` EIC 2025 / Censo 2020) como factor de los hogares.
+# * **No se usan los hogares de la EIC directamente:** en la EIC hogar = vivienda (`TOTHOG = VIVPARHAB`) y su cociente
+#   contra el Censo implica que el tamaño del hogar cayó ~10% en 5 años (p. ej. Mérida 3.3 → 2.9), lo que no es
+#   demográficamente creíble; es un cambio de definición. Con la población el factor es conservador.
+# * El notebook 04 aplica el factor a los hogares de cada manzana y localidad rural (demanda de las tiendas en 2025).
+#   Las tablas por AGEB de este notebook se quedan en Censo 2020 (la base oficial).
+
+# %%
+f_eic = next(D_EIC.rglob("conjunto_datos_eic2025_105.csv"))
+eic = pd.read_csv(f_eic, dtype=str, encoding="latin-1")
+eic = eic[(eic.CVE_ENT == C.ENT) & eic.CVE_MUN.isin(C.ZM_MUNICIPIOS) & (eic.CVE_LOC == "0000")]
+val = eic[eic.ESTIMADOR == "Valor"].set_index("CVE_MUN")
+cv = eic[eic.ESTIMADOR.str.startswith("Coeficiente")].set_index("CVE_MUN")
+COLS_ITER = ["MUN", "LOC", "POBTOT", "TOTHOG", "VIVPAR_HAB"]
+try:
+    base = pd.read_csv(f_iter, dtype=str, encoding="utf-8-sig", usecols=COLS_ITER)
+except UnicodeDecodeError:
+    base = pd.read_csv(f_iter, dtype=str, encoding="latin-1", usecols=COLS_ITER)
+base = base[(base.LOC == "0000") & base.MUN.isin(C.ZM_MUNICIPIOS)].set_index("MUN").apply(pd.to_numeric)
+crec = pd.DataFrame({
+    "Municipio": pd.Series(C.ZM_MUNICIPIOS),
+    "Población 2020 (Censo)": base.POBTOT, "Población 2025 (EIC)": pd.to_numeric(val.POBTOT),
+    "CV población EIC %": pd.to_numeric(cv.POBTOT),
+    "Hogares 2020 (Censo)": base.TOTHOG, "Hogares 2025 (EIC, hogar = vivienda)": pd.to_numeric(val.TOTHOG)})
+crec["Personas por hogar 2020"] = crec["Población 2020 (Censo)"] / crec["Hogares 2020 (Censo)"]
+crec["Personas por hogar 2025 (EIC)"] = crec["Población 2025 (EIC)"] / crec["Hogares 2025 (EIC, hogar = vivienda)"]
+crec["factor_hogares"] = crec["Población 2025 (EIC)"] / crec["Población 2020 (Censo)"]
+crec.index.name = "MUN"
+crec.to_parquet(C.PROC / f"crecimiento_municipal_{C.SLUG}.parquet")
+print(f"ZM: población 2020 → 2025: {crec['Población 2020 (Censo)'].sum():,.0f} → {crec['Población 2025 (EIC)'].sum():,.0f} "
+      f"(factor {crec['Población 2025 (EIC)'].sum() / crec['Población 2020 (Censo)'].sum():.3f})")
+crec.round(3)
+
