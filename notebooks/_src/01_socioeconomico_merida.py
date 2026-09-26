@@ -1,5 +1,5 @@
 # %% [markdown]
-# # 01 · Perfil socioeconómico de hogares por AGEB — ZM Mérida
+# # 01 · Perfil socioeconómico de hogares por AGEB (ciudad según `src/config.py`)
 #
 # **Salida:** una fila por AGEB urbana con Latitud/Longitud y, para cada categoría, `HHs`, `%` e `Indice`:
 #
@@ -8,13 +8,32 @@
 # | Tamaño del hogar | 2 o menos, 3, 4, 5, 6+ personas |
 # | Niños (edad del **menor** de 18 en el hogar) | < 6, 6–11, 12–17, sin niños |
 # | Edad del jefe(a) de hogar | < 35, 35–44, 45–54, 55–64, 65+ |
-# | NSE (Regla **AMAI 2022**) | A/B, C+, C, C-, D+, D/E |
+# | NSE (Regla **AMAI 2024**, vigente; mismos puntos y cortes que la 2022) | A/B, C+, C, C-, D+, D/E |
 #
-# **Fuentes oficiales (INEGI):**
-# 1. Censo 2020 – Resultados por AGEB y manzana urbana (conteo completo).
-# 2. Censo 2020 – Microdatos del cuestionario ampliado (muestra de ~4 M de viviendas a nivel nacional).
-# 3. Marco Geoestadístico 2020 (polígonos AGEB y manzana).
-# 4. ENIGH 2024 (la más reciente) – solo para imputar *número* de baños completos y autos.
+# **Fuentes oficiales** (todas las URLs viven en `src/config.py` → `FUENTES`; la celda 1 las muestra y
+# las verifica con HEAD al correr). Verificadas el 2026-09-24:
+#
+# | # | Fuente | Edición | Página oficial | Uso |
+# |---|---|---|---|---|
+# | 1 | INEGI · Censo 2020, Principales resultados por AGEB y manzana urbana | 2020 | https://www.inegi.org.mx/programas/ccpv/2020/#datos_abiertos | Totales por AGEB (restricciones) y hogares por manzana |
+# | 2 | INEGI · Censo 2020, Microdatos del cuestionario ampliado | 2020 | https://www.inegi.org.mx/programas/ccpv/2020/#microdatos | Hogares donantes |
+# | 3 | INEGI · Marco Geoestadístico | 2025 (UPC 794551163061) | https://www.inegi.org.mx/app/biblioteca/ficha.html?upc=794551163061 | Polígonos de AGEB, manzana y localidad |
+# | 4 | INEGI · ENIGH 2024, nueva serie (la más reciente) | 2024 | https://www.inegi.org.mx/programas/enigh/nc/2024/#datos_abiertos | Imputar *número* de baños completos y autos |
+# | 5 | AMAI · Regla NSE 2024 | vigente desde ene-2024 | https://www.amai.org/NSE/index.php?queVeo=NSE2024 | Puntos y cortes del NSE (`src/nse.py`) |
+#
+# URL de descarga por estado (`{ENT}` = clave INEGI, `{abrev}` y `{slug}` en `config.py`):
+# 1. `https://www.inegi.org.mx/contenidos/programas/ccpv/2020/datosabiertos/ageb_manzana/ageb_mza_urbana_{ENT}_cpv2020_csv.zip`
+# 2. `https://www.inegi.org.mx/contenidos/programas/ccpv/2020/microdatos/Censo2020_CA_{abrev}_csv.zip`
+# 3. `https://www.inegi.org.mx/contenidos/productos/prod_serv/contenidos/espanol/bvinegi/productos/geografia/marcogeo/794551163061/{ENT}_{slug}.zip`
+# 4. `https://www.inegi.org.mx/contenidos/programas/enigh/nc/2024/datosabiertos/conjunto_de_datos_enigh2024_ns_csv.zip`
+# 5. Nota metodológica: `https://www.amai.org/descargas/NOTA_METODOLOGICA_NSE_AMAI_2024_v6.pdf`
+#
+# **Por qué Censo 2020 y no la Encuesta Intercensal 2025:** la EIC 2025 (publicada el 2026-09-22) es una muestra
+# representativa por estado, municipio y localidades de 50 mil+ habitantes; **no publica resultados por AGEB ni
+# manzana**, así que el Censo 2020 sigue siendo la fuente más reciente a ese nivel.
+#
+# **Marco Geoestadístico 2025 con datos del Censo 2020:** las claves de AGEB coinciden igual que con el MG 2020;
+# unas pocas manzanas del Censo ya no existen en el MG 2025 (se reporta cuántas en la sección 8).
 #
 # **Por qué hace falta modelar:** el Censo por AGEB no publica tamaño de hogar, edad del jefe ni NSE.
 # Esas variables sí existen en la muestra censal, pero solo con desagregación municipal / localidad.
@@ -24,51 +43,61 @@
 # distribuciones anteriores.
 #
 # **Indice** = % de la AGEB / % de la referencia × 100 (referencia configurable en `src/config.py`:
-# total ZM Mérida o total Yucatán).
+# total de la ZM o total del estado).
 
 # %%
 import sys, zipfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path.cwd().parent / "src"))
+BASE = next(p for p in [Path.cwd(), *Path.cwd().parents] if (p / "src" / "config.py").exists())   # raíz del repo
+sys.path.insert(0, str(BASE / "src"))
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 
 import config as C
 import nse
-from descargas import descargar
+from descargas import descargar, extraer, registrar_fuentes, verificar_fuentes
+from IPython.display import display
 from microsim import ipu
 
 pd.set_option("display.width", 200, "display.max_columns", 40)
 
+
+# reproducibilidad: ciudad, versiones y semilla (no hay pasos aleatorios en este notebook)
+import platform
+print(f"Repo: {BASE} | ciudad: {C.ZM_NOMBRE} (CIUDAD={C.CIUDAD}) | Python {platform.python_version()} · pandas {pd.__version__} · numpy {np.__version__}")
+
 # %% [markdown]
-# ## 1. Descarga (con reanudación: los servidores de INEGI suelen cortar la conexión)
+# ## 1. Fuentes: de dónde se descarga cada archivo (verificación en vivo) y descarga
+# Descarga con reanudación: los servidores de INEGI suelen cortar la conexión.
+
+# %%
+print("Regla NSE:", C.REGLA_NSE["nombre"], "|", C.REGLA_NSE["pagina"])
+print(f"Ciudad: {C.ZM_NOMBRE} · {C.NOM_ENT} ({C.ENT}) · municipios: " + ", ".join(f"{v} ({k})" for k, v in C.ZM_MUNICIPIOS.items()))
+display(verificar_fuentes(C.FUENTES, ["ageb", "micro", "mg", "enigh"]))
 
 # %%
 for k in ["ageb", "micro", "mg", "enigh"]:
+    print(f"{k}: {C.URLS[k]}")
     descargar(C.URLS[k], C.ARCHIVOS[k])
 
-
-def extraer(zip_path, destino):
-    destino = Path(destino)
-    if not destino.exists():
-        with zipfile.ZipFile(zip_path) as z:
-            z.extractall(destino)
-    return destino
 
 
 D_AGEB = extraer(C.ARCHIVOS["ageb"], C.RAW / f"ageb_{C.ENT}")
 D_MICRO = extraer(C.ARCHIVOS["micro"], C.RAW / f"micro_{C.ENT}")
-D_MG = extraer(C.ARCHIVOS["mg"], C.RAW / f"mg2020_{C.ENT}")
+D_MG = extraer(C.ARCHIVOS["mg"], C.RAW / f"mg{C.MG_VERSION}_{C.ENT}")
 D_ENIGH = extraer(C.ARCHIVOS["enigh"], C.RAW / "enigh2024")
+
+# registro de las versiones exactas usadas (para depurar / reproducir): data/processed/<ciudad>/fuentes_usadas_01.csv
+registrar_fuentes(C.FUENTES, ["ageb", "micro", "mg", "enigh"], C.PROC / "fuentes_usadas_01.csv")[["fuente", "edicion", "archivo_local", "bytes", "descargado"]]
 
 # %% [markdown]
 # ## 2. Imputación de baños completos y autos con ENIGH 2024
 #
 # El Censo pregunta **si** hay auto y **si** hay regadera + excusado, pero no cuántos. La regla AMAI
 # da distintos puntos para 1 vs 2+. Se entrena un logit ponderado en hogares urbanos de la península
-# (Yucatán, Campeche, Q. Roo) y Tabasco con variables que existen en ambas fuentes.
+# (`C.ENIGH_ESTADOS`: el estado y sus vecinos) con variables que existen en ambas fuentes.
 #
 # **Validación:** en la propia ENIGH se compara el NSE con conteos reales vs el NSE obtenido tras
 # "censalizar" la información (convertir a sí/no e imputar).
@@ -89,11 +118,11 @@ val = pd.DataFrame({
 }).reindex(nse.NIVELES)
 val = (val / val.sum() * 100).round(1)
 val["dif pp"] = (val.iloc[:, 1] - val.iloc[:, 0]).round(1)
-print(f"Hogares ENIGH usados: {len(enigh):,} (Yucatán: {yuc.sum():,})")
+print(f"Hogares ENIGH usados: {len(enigh):,} ({C.NOM_ENT}: {yuc.sum():,})")
 val
 
 # %% [markdown]
-# ## 3. Hogares de la muestra censal (Yucatán) → variables de salida y probabilidad NSE
+# ## 3. Hogares de la muestra censal (estado) → variables de salida y probabilidad NSE
 
 # %%
 viv = pd.read_csv(D_MICRO / f"Viviendas{C.ENT}.CSV", dtype=str)
@@ -154,18 +183,21 @@ for niv in ["A/B", "C+", "C", "C-", "D+"]:
     cat[niv] = P_NSE[niv]
 cat["D/E"] = P_NSE["D"] + P_NSE["E"]
 cat = cat.astype(float)[C.CATEGORIAS]
-print(f"Hogares en la muestra (Yucatán): {len(h):,}  |  representan {h.FACTOR.sum():,.0f} hogares")
+print(f"Hogares en la muestra ({C.NOM_ENT}): {len(h):,}  |  representan {h.FACTOR.sum():,.0f} hogares")
 
 # distribucion de referencia estatal (muestra expandida)
 REF_ESTADO = cat.mul(h.FACTOR, axis=0).sum() / h.FACTOR.sum() * 100
-REF_ESTADO.round(1).to_frame("% Yucatán")
+REF_ESTADO.round(1).to_frame(f"% {C.NOM_ENT}")
 
 # %% [markdown]
 # ## 4. Totales por AGEB del Censo 2020 (restricciones de la microsimulación)
 
 # %%
 f_ageb = next(D_AGEB.rglob(f"conjunto_de_datos_ageb_urbana_{C.ENT}_cpv2020.csv"))
-raw = pd.read_csv(f_ageb, dtype=str, encoding="utf-8-sig")
+try:                                                   # Yucatán viene en utf-8-sig, Jalisco en latin-1
+    raw = pd.read_csv(f_ageb, dtype=str, encoding="utf-8-sig")
+except UnicodeDecodeError:
+    raw = pd.read_csv(f_ageb, dtype=str, encoding="latin-1")
 # nombres de localidad desde el Marco Geoestadistico (en el CSV AGEB solo dice "Total de la localidad")
 loc = gpd.read_file(D_MG / "conjunto_de_datos" / f"{C.ENT}l.shp", columns=["CVEGEO", "NOMGEO"], ignore_geometry=True)
 nom_loc = loc.set_index("CVEGEO").NOMGEO
@@ -267,21 +299,21 @@ tabla.head()
 # %%
 # (a) ZM agregada vs estimación directa de la muestra (ambas deberían parecerse)
 don_ref = cat.loc[don.index].mul(don.FACTOR, axis=0).sum() / don.FACTOR.sum() * 100
-chk = pd.DataFrame({"ZM (suma AGEB)": REF_ZM, "ZM (muestra directa)": don_ref, "Yucatán": REF_ESTADO}).round(1)
+chk = pd.DataFrame({"ZM (suma AGEB)": REF_ZM, "ZM (muestra directa)": don_ref, C.NOM_ENT: REF_ESTADO}).round(1)
 # (b) comparación NSE con AMAI nacional 2022 (publicado): A/B 7.3, C+ 12.0, C 15.3, C- 16.4, D+ 14.9, D/E 34.1
 chk
 
 # %% [markdown]
 # ## 8. Guardar resultados
 #
-# * `outputs/01_nse_ageb_zm_merida.xlsx` – formato del entregable (encabezado de 2 niveles).
-# * `data/processed/nse_ageb_zm_merida.parquet` – tabla plana (para el paso 03).
-# * `data/processed/ageb_zm_merida.gpkg` – polígonos AGEB con los atributos (para mapas).
-# * `data/processed/manzanas_zm_merida.parquet` – centroides de manzana con su participación de hogares
+# * `outputs/<ciudad>/01_nse_ageb_zm_<ciudad>.xlsx` – formato del entregable (encabezado de 2 niveles).
+# * `data/processed/<ciudad>/nse_ageb_zm_<ciudad>.parquet` – tabla plana (para el paso 03).
+# * `data/processed/<ciudad>/ageb_zm_<ciudad>.gpkg` – polígonos AGEB con los atributos (para mapas).
+# * `data/processed/<ciudad>/manzanas_zm_<ciudad>.parquet` – centroides de manzana con su participación de hogares
 #   dentro de la AGEB (para medir áreas de influencia de tiendas en el paso 03).
 
 # %%
-out_xlsx = C.OUT / "01_nse_ageb_zm_merida.xlsx"
+out_xlsx = C.OUT / f"01_nse_ageb_{C.SLUG}.xlsx"
 with pd.ExcelWriter(out_xlsx, engine="openpyxl") as xw:
     tabla.to_excel(xw, sheet_name="AGEB")
     pd.DataFrame({"Referencia %": REF.round(2)}).to_excel(xw, sheet_name="Referencia indice")
@@ -290,9 +322,9 @@ with pd.ExcelWriter(out_xlsx, engine="openpyxl") as xw:
     ajuste.to_excel(xw, sheet_name="Ajuste microsim")
 
 plana = pd.concat([ids, hh.add_prefix("HHs_")], axis=1)
-plana.to_parquet(C.PROC / "nse_ageb_zm_merida.parquet", index=False)
+plana.to_parquet(C.PROC / f"nse_ageb_{C.SLUG}.parquet", index=False)
 REF_ESTADO.to_frame("pct").to_parquet(C.PROC / "ref_estado.parquet")
-geo.merge(plana, on="CVEGEO").to_file(C.PROC / "ageb_zm_merida.gpkg", driver="GPKG")
+geo.merge(plana, on="CVEGEO").to_file(C.PROC / f"ageb_{C.SLUG}.gpkg", driver="GPKG")
 
 # ---- manzanas: participacion de hogares dentro de su AGEB ----
 mz = raw[(raw.MZA != "000") & raw.MUN.isin(C.ZM_MUNICIPIOS)][["MUN", "LOC", "AGEB", "MZA", "TOTHOG", "VIVPAR_HAB"]].copy()
@@ -313,6 +345,9 @@ gmz = gpd.read_file(D_MG / "conjunto_de_datos" / f"{C.ENT}m.shp", columns=["CVEG
 gmz = gmz[gmz.CVEGEO.isin(mz.CVEGEO)]
 cm = gmz.set_index("CVEGEO").geometry.representative_point().to_crs(4326)
 mz["lat"], mz["lon"] = mz.CVEGEO.map(cm.y), mz.CVEGEO.map(cm.x)
+sin_poligono = mz.lat.isna() & (mz.hog > 0)
+print(f"Manzanas del Censo sin polígono en el Marco Geoestadístico {C.MG_VERSION}: {sin_poligono.sum():,} "
+      f"({mz.hog[sin_poligono].sum():,.0f} hogares, {mz.hog[sin_poligono].sum() / mz.hog.sum():.2%}) → no entran en los radios")
 mz = mz.dropna(subset=["lat", "share"])
-mz[["CVEGEO", "CVEGEO_AGEB", "hog", "share", "lat", "lon"]].to_parquet(C.PROC / "manzanas_zm_merida.parquet", index=False)
+mz[["CVEGEO", "CVEGEO_AGEB", "hog", "share", "lat", "lon"]].to_parquet(C.PROC / f"manzanas_{C.SLUG}.parquet", index=False)
 print("Guardado:", out_xlsx, f"| manzanas: {len(mz):,}")

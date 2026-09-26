@@ -1,4 +1,4 @@
-"""Regla NSE AMAI 2022 + imputacion de # banos completos y # autos con ENIGH 2024.
+"""Regla NSE AMAI 2024 (vigente; mismos puntos y cortes que la 2022) + imputacion de # banos completos y # autos con ENIGH 2024.
 
 El Censo 2020 (cuestionario ampliado) solo pregunta si hay auto (si/no) y si hay
 regadera y excusado, pero no CUANTOS. La regla AMAI distingue 1 vs 2+ en ambos,
@@ -11,7 +11,9 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 
-# ---- Regla AMAI 2022 (fuente: amai.org/descargas/CUESTIONARIO_AMAI_2022.pdf) ----
+# ---- Regla AMAI 2024 = puntos y cortes de la Regla 2022 (AMAI, Nota metodologica NSE 2024, oct-2023:
+#      "mantener la regla AMAI 2022 vigente, sin cambios por dos anos mas, bajo el nuevo nombre de regla AMAI 2024").
+#      Fuentes: amai.org/descargas/NOTA_METODOLOGICA_NSE_AMAI_2024_v6.pdf y amai.org/descargas/CUESTIONARIO_AMAI_2022.pdf ----
 PTS_BANOS = {0: 0, 1: 24, 2: 47}
 PTS_AUTOS = {0: 0, 1: 22, 2: 43}
 PTS_INTERNET = {0: 0, 1: 32}
@@ -30,7 +32,7 @@ def nivel_nse(puntos):
 
 
 def edu_censo(nivacad: pd.Series, escolari: pd.Series) -> pd.Series:
-    """NIVACAD/ESCOLARI del Censo 2020 -> puntos AMAI 2022 de escolaridad del jefe."""
+    """NIVACAD/ESCOLARI del Censo 2020 -> puntos AMAI 2024 (= 2022) de escolaridad del jefe."""
     n = pd.to_numeric(nivacad, errors="coerce")
     g = pd.to_numeric(escolari, errors="coerce").fillna(0)
     pts = pd.Series(np.nan, index=n.index)

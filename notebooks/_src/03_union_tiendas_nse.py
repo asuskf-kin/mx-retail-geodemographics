@@ -1,5 +1,5 @@
 # %% [markdown]
-# # 03 · Unión tiendas × perfil socioeconómico — ZM Mérida (canal Moderno y Tradicional)
+# # 03 · Unión tiendas × perfil socioeconómico (ciudad según `src/config.py`; canal Moderno y Tradicional)
 #
 # Cómo se unen las dos capas:
 #
@@ -16,7 +16,8 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path.cwd().parent / "src"))
+BASE = next(p for p in [Path.cwd(), *Path.cwd().parents] if (p / "src" / "config.py").exists())   # raíz del repo
+sys.path.insert(0, str(BASE / "src"))
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -27,11 +28,19 @@ import config as C
 RADIOS_M = [500, 1000]      # radios de influencia a calcular (metros)
 R_TIERRA = 6_371_000
 
+
+# reproducibilidad: ciudad, versiones y semilla (no hay pasos aleatorios en este notebook)
+import platform
+print(f"Repo: {BASE} | ciudad: {C.ZM_NOMBRE} (CIUDAD={C.CIUDAD}) | Python {platform.python_version()} · pandas {pd.__version__} · numpy {np.__version__}")
+from descargas import requisitos
+requisitos({C.PROC / f"nse_ageb_{C.SLUG}.parquet": "01_socioeconomico_merida", C.PROC / f"manzanas_{C.SLUG}.parquet": "01_socioeconomico_merida",
+            C.PROC / f"ageb_{C.SLUG}.gpkg": "01_socioeconomico_merida", C.PROC / f"tiendas_denue_{C.SLUG}.parquet": "02_tiendas_denue_merida"})
+
 # %%
-ageb = pd.read_parquet(C.PROC / "nse_ageb_zm_merida.parquet")
-mz = pd.read_parquet(C.PROC / "manzanas_zm_merida.parquet")
-tiendas = pd.read_parquet(C.PROC / "tiendas_denue_zm_merida.parquet")
-geo = gpd.read_file(C.PROC / "ageb_zm_merida.gpkg")
+ageb = pd.read_parquet(C.PROC / f"nse_ageb_{C.SLUG}.parquet")
+mz = pd.read_parquet(C.PROC / f"manzanas_{C.SLUG}.parquet")
+tiendas = pd.read_parquet(C.PROC / f"tiendas_denue_{C.SLUG}.parquet")
+geo = gpd.read_file(C.PROC / f"ageb_{C.SLUG}.gpkg")
 hh_cols = [f"HHs_{c}" for c in C.CATEGORIAS]
 
 # referencia del indice (la misma del paso 01)
@@ -129,7 +138,7 @@ tabla_ageb = tabla_layout(a[hh_cols].fillna(0).values, a["Total HHs"].fillna(0).
 # %%
 r = RADIOS_M[-1]
 t = resultados[r]
-nse_cols = C.GRUPOS["NSE AMAI 2022"]
+nse_cols = C.GRUPOS["NSE AMAI 2024"]
 pct_nse = pd.DataFrame({c: t[(c, "%")] for c in nse_cols})
 base = pd.concat([t[("", "Canal")].rename("Canal"), t[("", "Cadena")].rename("Cadena"),
                   t[("", "Formato")].rename("Formato"), pct_nse], axis=1)
@@ -154,7 +163,7 @@ resumenes["Moderno"]
 # %%
 # Un archivo por canal: Moderno (cadenas) y Tradicional (abarrotes / independientes)
 for canal in C.CANALES:
-    out = C.OUT / f"03_{canal.lower()}_x_nse_zm_merida.xlsx"
+    out = C.OUT / f"03_{canal.lower()}_x_nse_{C.SLUG}.xlsx"
     with pd.ExcelWriter(out, engine="openpyxl") as xw:
         for r, tab in resultados.items():
             tab[tab[("", "Canal")] == canal].to_excel(xw, sheet_name=f"Radio {r} m")

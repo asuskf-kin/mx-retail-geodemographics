@@ -1,14 +1,17 @@
 # Referencia técnica: NSE × tiendas (México)
 
-## Fuentes y URLs (patrón por estado, `{ENT}` = 2 dígitos)
+## Fuentes y URLs (patrón por estado, `{ENT}` = 2 dígitos). Verificadas el 2026-09-24
+Las URLs viven en `src/config.py` → `FUENTES`; `descargas.verificar_fuentes()` les hace HEAD y los notebooks 01 y 02 muestran esa tabla.
 | Dato | URL | Nota |
 |---|---|---|
 | Censo 2020 AGEB y manzana | `https://www.inegi.org.mx/contenidos/programas/ccpv/2020/datosabiertos/ageb_manzana/ageb_mza_urbana_{ENT}_cpv2020_csv.zip` | utf-8-sig. Los valores `*` y `N/D` son confidenciales y se leen como NaN |
 | Censo 2020 muestra (cuestionario ampliado) | `https://www.inegi.org.mx/contenidos/programas/ccpv/2020/microdatos/Censo2020_CA_{abrev}_csv.zip` | trae `Viviendas{ENT}.CSV` y `Personas{ENT}.CSV` |
-| Marco Geoestadístico 2020 | `https://www.inegi.org.mx/contenidos/productos/prod_serv/contenidos/espanol/bvinegi/productos/geografia/marcogeo/889463807469/{ENT}_{slug}.zip` | capas `{ENT}a.shp` (AGEB urbana), `{ENT}m.shp` (manzana) y `{ENT}l.shp` (localidad urbana, campo NOMGEO) |
+| Marco Geoestadístico 2025 (vigente, dic-2025) | `https://www.inegi.org.mx/contenidos/productos/prod_serv/contenidos/espanol/bvinegi/productos/geografia/marcogeo/794551163061/{ENT}_{slug}.zip` | `MG_VERSION="2025"`. Capas `{ENT}a.shp` (AGEB urbana), `{ENT}m.shp` (manzana) y `{ENT}l.shp` (localidad urbana, campo NOMGEO). Con el Censo 2020: AGEB empatan igual que con el MG 2020; ~0.1–0.3% de hogares quedan en manzanas sin polígono |
+| Marco Geoestadístico 2020 (ligado al Censo) | `.../marcogeo/889463807469/{ENT}_{slug}.zip` | `MG_VERSION="2020"` como alternativa |
 | ENIGH 2024 (nueva serie) | `https://www.inegi.org.mx/contenidos/programas/enigh/nc/2024/datosabiertos/conjunto_de_datos_enigh2024_ns_csv.zip` | nacional, ~100 MB |
 | DENUE (vigente) | `https://www.inegi.org.mx/contenidos/masiva/denue/denue_{ENT}_csv.zip` | latin-1. La edición se lee en `metadatos/metadatos_denue.txt` |
-| Regla AMAI 2022 | `https://www.amai.org/descargas/CUESTIONARIO_AMAI_2022.pdf` | la regla sigue vigente en 2024 |
+| Regla AMAI 2024 | `https://www.amai.org/NSE/index.php?queVeo=NSE2024` · nota `https://www.amai.org/descargas/NOTA_METODOLOGICA_NSE_AMAI_2024_v6.pdf` · cuestionario `https://www.amai.org/descargas/CUESTIONARIO_AMAI_2022.pdf` | vigente desde ene-2024 con los mismos puntos y cortes que la 2022 |
+| Encuesta Intercensal 2025 (no se usa) | `https://www.inegi.org.mx/programas/eic/2025/` | publicada 2026-09-22; muestra de 7.3 M viviendas representativa por estado, municipio y localidades 50k+. **No tiene AGEB ni manzana**, por eso el Censo 2020 sigue siendo la base por AGEB |
 | OSM (opcional) | Overpass `https://overpass-api.de/api/interpreter` | sin header User-Agent responde HTTPError; con él responde 200 |
 
 No uses el zip del Marco Geoestadístico **nacional** (`794551132173_s.zip`): es el de todo el país. Usa el estatal (~50 MB para Yucatán).
@@ -24,7 +27,10 @@ Las 32 fueron verificadas con HEAD el 2026-09-22; todas responden ZIP. Ojo: no s
 Las áreas Nielsen México son aproximadas. **Confírmalas con el usuario o con su catálogo Nielsen**:
 Pacífico, Norte, Bajío, Centro, Valle de México (Metro) y Sureste (Yuc, Camp, QRoo, Tab, Chis y parte de Ver).
 
-## Regla NSE AMAI 2022 (oficial)
+## Regla NSE AMAI 2024 (oficial; mismos puntos y cortes que la Regla 2022)
+AMAI decidió "mantener la regla AMAI 2022 vigente, sin cambios por dos años más, bajo el nuevo nombre de regla AMAI 2024"
+(Nota metodológica NSE AMAI 2024, oct-2023: https://www.amai.org/descargas/NOTA_METODOLOGICA_NSE_AMAI_2024_v6.pdf).
+Al replicar, revisa en https://www.amai.org/NSE/ si ya salió una regla más nueva (se revisa cada 2 años con cada ENIGH).
 | Variable | Puntos |
 |---|---|
 | Escolaridad del jefe | No estudió 0 · Prim inc 6 · Prim comp 11 · Sec inc 12 · Sec comp 18 · Técnica o comercial 23 · Prepa inc 23 · Prepa comp 27 · Lic inc 36 · Lic comp 59 · Maestría o doctorado 85 |
@@ -89,3 +95,12 @@ ENIGH 2024 (ns): `viviendas.bano_comp`, `cuart_dorm` y `num_cuarto`; `hogares.nu
 - Hay regex de cadenas con falsos positivos: "SUPERCITO" no es Chedraui y "TENDEJON WILLY" no es Willys.
   Los abarrotes "Six" son tienditas afiliadas, no tiendas propias de una cadena.
 - `pandas 3`: las columnas de texto son Arrow y no admiten indexación 2D numpy.
+- El CSV AGEB de **Jalisco viene en latin-1** (Yucatán en utf-8-sig) y el zip trae además
+  `bitacora_cambios_ageb_urbana_{ENT}_cpyv2020.csv`. El notebook 01 prueba ambos encodings y elige el archivo por nombre.
+- ZM grandes: el IPU directo (areas × donantes) no escala; Guadalajara pasó 90 min sin terminar.
+  `src/microsim.py` itera sobre patrones de ceros de los donantes y filas distintas de W0 (exacto, ~13 min en GDL).
+- Regex de cadenas en Guadalajara: "OSWALDO" ≠ Waldo's, "WALMARTHA" ≠ Walmart, "ABARROTES SAMS" ≠ Sam's,
+  "EL NETO" ≠ Neto, "ABARROTES KIOSKO" ≠ Kiosko. **Bara** (FEMSA) comparte razón social con OXXO: va antes en la lista.
+  Cadenas locales agregadas: Su Super, Abarrotes y Bebidas MR, Super Kadis, Area 24.7.
+- Para probar un cambio de regex sin correr el notebook, aplica `CADENAS` sobre `tiendas_denue_*.parquet`
+  de otra ciudad ya procesada y confirma que sus conteos no cambian.

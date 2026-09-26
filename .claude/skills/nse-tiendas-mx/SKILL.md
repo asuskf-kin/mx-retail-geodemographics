@@ -2,7 +2,7 @@
 name: nse-tiendas-mx
 description: >
   Replica para cualquier ciudad o zona metropolitana de México el pipeline de perfil socioeconómico
-  de hogares (tamaño, edad del menor, edad del jefe, NSE AMAI 2022) por AGEB y por área de
+  de hogares (tamaño, edad del menor, edad del jefe, NSE AMAI 2024) por AGEB y por área de
   influencia de tiendas DENUE (supermercados 462111, minisupers 462112, abarrotes 461110), separando
   canal Moderno y Tradicional. Usar cuando pidan "haz lo mismo para Monterrey/Guadalajara/…",
   "NSE por AGEB", "hogares alrededor de las tiendas", "DENUE 462111 462112", "perfil demográfico de
