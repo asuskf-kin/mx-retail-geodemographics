@@ -60,7 +60,7 @@ import geopandas as gpd
 
 import config as C
 import nse
-from descargas import descargar, extraer, registrar_fuentes, verificar_fuentes
+from descargas import descargar_fuente, extraer, registrar_fuentes, verificar_fuentes
 from IPython.display import display
 from microsim import ipu
 
@@ -83,16 +83,16 @@ display(verificar_fuentes(C.FUENTES, ["ageb", "iter", "micro", "mg", "enigh", "e
 # %%
 for k in ["ageb", "iter", "micro", "mg", "enigh", "eic"]:
     print(f"{k}: {C.URLS[k]}")
-    descargar(C.URLS[k], C.ARCHIVOS[k])
+    descargar_fuente(C.FUENTES[k])
 
 
 
-D_AGEB = extraer(C.ARCHIVOS["ageb"], C.RAW / f"ageb_{C.ENT}")
-D_ITER = extraer(C.ARCHIVOS["iter"], C.RAW / f"iter_{C.ENT}")
-D_MICRO = extraer(C.ARCHIVOS["micro"], C.RAW / f"micro_{C.ENT}")
-D_MG = extraer(C.ARCHIVOS["mg"], C.RAW / f"mg{C.MG_VERSION}_{C.ENT}")
-D_ENIGH = extraer(C.ARCHIVOS["enigh"], C.RAW / "enigh2024")
-D_EIC = extraer(C.ARCHIVOS["eic"], C.RAW / "eic2025_105")
+D_AGEB = extraer(C.ARCHIVOS["ageb"])
+D_ITER = extraer(C.ARCHIVOS["iter"])
+D_MICRO = extraer(C.ARCHIVOS["micro"])
+D_MG = extraer(C.ARCHIVOS["mg"])
+D_ENIGH = extraer(C.ARCHIVOS["enigh"])
+D_EIC = extraer(C.ARCHIVOS["eic"])
 
 # registro de las versiones exactas usadas (para depurar / reproducir): data/processed/<ciudad>/fuentes_usadas_01.csv
 registrar_fuentes(C.FUENTES, ["ageb", "iter", "micro", "mg", "enigh", "eic"], C.PROC / "fuentes_usadas_01.csv")[["fuente", "edicion", "archivo_local", "bytes", "descargado"]]

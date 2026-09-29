@@ -12,7 +12,7 @@
 # después **todo el análisis se hace solo con los PDV de la ZM Mérida** (cruce espacial con los polígonos municipales
 # del Marco Geoestadístico 2025).
 #
-# **Fuentes (del cliente, en `data/raw/bepensa/`, no se suben a git):**
+# **Fuentes (del cliente, en `data/raw/merida/bepensa/`, no se suben a git):**
 #
 # | Archivo | Qué trae | Grano |
 # |---|---|---|
@@ -28,7 +28,7 @@
 #   es "significativo", así que se decide por **tamaño de efecto** (ρ, ε², δ de Cliff, V de Cramér) y su IC95.
 #
 # **Reproducir:** es el **primer** notebook: no depende de 01–03 (orden completo 00 → 01 → 02 → 03 → 04). Ábrelo desde
-# `notebooks/` o corre `python src/correr.py --pasos 00 merida`. Necesita los datos del cliente en `data/raw/bepensa/`
+# `notebooks/` o corre `python src/correr.py --pasos 00 merida`. Necesita los datos del cliente en `data/raw/merida/bepensa/`
 # (el Marco Geoestadístico se descarga solo si falta) y los paquetes de `requirements.txt`.
 # Todo lo aleatorio usa la semilla fija `eda.SEMILLA`.
 
@@ -57,7 +57,7 @@ from IPython.display import display
 import config as C
 import cadenas
 import eda
-from descargas import descargar, extraer
+from descargas import descargar_fuente, extraer
 
 assert C.CIUDAD == C.CLIENTE_CIUDAD, f"Los datos de {C.CLIENTE} son de {C.CLIENTE_CIUDAD}; CIUDAD={C.CIUDAD}"
 eda.estilo()
@@ -82,8 +82,8 @@ FUENTES_CLIENTE = pd.DataFrame([{
     "sha256": hashlib.sha256(Path(f).read_bytes()).hexdigest()} for f in [*C.CLIENTE_VENTAS, C.CLIENTE_CP]])
 FUENTES_CLIENTE.to_csv(C.PROC / f"fuentes_cliente_{C.CLIENTE}_00.csv", index=False)
 display(FUENTES_CLIENTE)
-descargar(C.URLS["mg"], C.ARCHIVOS["mg"])       # no vuelve a bajar si el zip ya existe y abre bien
-D_MG = extraer(C.ARCHIVOS["mg"], C.RAW / f"mg{C.MG_VERSION}_{C.ENT}")
+descargar_fuente(C.FUENTES["mg"])       # no vuelve a bajar si el zip ya existe y abre bien
+D_MG = extraer(C.ARCHIVOS["mg"])
 
 # %% [markdown]
 # ## 1. Carga e integridad

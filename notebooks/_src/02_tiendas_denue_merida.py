@@ -33,7 +33,7 @@ import requests
 
 import config as C
 import cadenas
-from descargas import descargar, registrar_fuentes, verificar_fuentes
+from descargas import descargar_fuente, registrar_fuentes, verificar_fuentes
 from IPython.display import display
 
 pd.set_option("display.width", 200, "display.max_columns", 30)
@@ -52,7 +52,7 @@ print("Nota: el cruce con OpenStreetMap (sección 3) consulta un servicio extern
 print(f"Ciudad: {C.ZM_NOMBRE} · {C.NOM_ENT} ({C.ENT}) · municipios: " + ", ".join(f"{v} ({k})" for k, v in C.ZM_MUNICIPIOS.items()))
 display(verificar_fuentes(C.FUENTES, ["denue"]))
 print("denue:", C.URLS["denue"])
-descargar(C.URLS["denue"], C.ARCHIVOS["denue"])
+descargar_fuente(C.FUENTES["denue"])
 with zipfile.ZipFile(C.ARCHIVOS["denue"]) as z:
     meta = z.read(next(n for n in z.namelist() if n.startswith("metadatos"))).decode("utf-8-sig", "replace")
     f_csv = next(n for n in z.namelist() if n.startswith("conjunto_de_datos") and n.endswith(".csv"))

@@ -15,34 +15,40 @@ src/microsim.py      IPU vectorizado (todas las AGEB a la vez)
 src/eda.py           estadística del notebook 00 (port de la skill retail-math-eda: IC bootstrap, Hill, AIC, KM, δ de Cliff, BH)
 src/correr.py        corre los notebooks por ciudad (en paralelo según dependencias) y guarda los ejecutados
 src/cadenas.py       cadenas y canal Moderno/Tradicional: única regla para DENUE y PDV del cliente
+src/altscore.py      señales AltScore del cliente: carga, familias, ubicación e índice NSE AltScore (PC1 de 4 proxies)
 src/deck_kin.py      estilo Kin para presentaciones (python-pptx) · src/excel_kin.py formato Kin para entregables Excel (04 y 05)
 src/py2nb.py         convierte notebooks/_src/*.py (celdas "# %%") → notebooks/*.ipynb
 notebooks/_src/*.py  FUENTE de los notebooks: edita aquí, luego regenera el .ipynb
 notebooks/01..03     pipeline de hogares y tiendas (correr en orden)
-notebooks/00, 04, 05 cliente Bepensa (solo ZM Mérida): 00 valida ventas × CP · 04 perfil por PDV a ≤300 m · 05 Golden Stores (deck + Excel)
+notebooks/00, 00b, 04, 05 cliente Bepensa (solo ZM Mérida): 00 valida ventas × CP · 00b EDA AltScore · 04 perfil por PDV a ≤300 m · 05 Golden Stores (deck + Excel)
 .claude/skills       nse-tiendas-mx (otra ciudad) · golden-stores-kin (cliente + deck, con scripts/instalar.py y qa_deck.py) ·
                      executive-pitch-presentation-builder · retail-math-eda · archify
-data/raw             descargas compartidas (se regeneran solas) · data/processed/<ciudad>/ intermedios · outputs/<ciudad>/ entregables xlsx
+data/raw/merida/bepensa/  todo lo de Mérida: ventas/ y cp/ del cliente + fuentes_oficiales/<institución>/<fuente>/ (se regeneran solas)
+                     (ciudad sin cliente: data/raw/<ciudad>/fuentes_oficiales/)
+data/processed/<ciudad>/ intermedios · outputs/<ciudad>/ entregables xlsx
 ```
 
 ## Cómo correr
 ```bash
 python src/correr.py merida guadalajara     # regenera los .ipynb desde _src y corre 01 → 02 → 03 por ciudad
-python src/correr.py --pasos 00,01,02,03,04,05 merida   # Bepensa: 00 no depende de nadie; 04 ← 00,01,02; 05 ← 00,04
+python src/correr.py --pasos 00,00b,01,02,03,04,05 merida   # Bepensa: 00 y 00b no dependen de nadie; 04 ← 00,00b,01,02; 05 ← 00,04
 ```
-Orden para Bepensa: **00 → 01 → 02 → 03 → 04 → 05** (00 solo usa los datos del cliente y el Marco Geoestadístico, que descarga solo). Los notebooks también se pueden abrir y correr a mano en VS Code/Jupyter
+Orden para Bepensa: **00 → 00b → 01 → 02 → 03 → 04 → 05** (00 solo usa los datos del cliente y el Marco Geoestadístico, que descarga solo). Los notebooks también se pueden abrir y correr a mano en VS Code/Jupyter
 (kernel Python 3.12 o 3.14 con `requirements.txt`): buscan la raíz del repo solos, usan Mérida por defecto y el 04 avisa
 qué notebook correr si falta un archivo previo. Todo lo aleatorio usa semilla fija (`eda.SEMILLA`): dos corridas dan lo mismo.
 `jupyter nbconvert` NO está instalado en esta máquina: `src/correr.py` usa nbclient directo y corre **en paralelo** lo que sus
-dependencias permiten (nivel 1: 00, 01, 02 · nivel 2: 03 ← 01+02, 04 ← 00+01+02; `--secuencial` para depurar). Las descargas y
+dependencias permiten (nivel 1: 00, 00b, 01, 02 · nivel 2: 03 ← 01+02, 04 ← 00+00b+01+02; `--secuencial` para depurar). Las descargas y
 extracciones tienen candado entre procesos. Tiempos: Mérida con Bepensa ≈ 2 min en paralelo (≈ 2.7 min secuencial; mismas salidas),
 Guadalajara ≈ 18 min (lo domina el IPU del 01).
 
 ## Qué se guarda (para depurar sin volver a descargar)
-- `data/raw/`: zips originales con estado y versión en el nombre (`mg2020_31_…`, `mg2025_31_…`). `descargar()` no re-baja un zip válido.
+- `data/raw/merida/bepensa/fuentes_oficiales/` (otra ciudad sin cliente: `data/raw/<ciudad>/fuentes_oficiales/`): una carpeta por institución y fuente (`INEGI/denue/`, `INEGI/marco_geoestadistico_2025eic/`, …)
+  con el zip original, lo extraído (carpeta con el nombre del zip) y `descarga.json` (institución, página, URL, edición, fecha de descarga,
+  bytes, SHA-256). `fuentes.csv` en la raíz es el índice de todas. `descargar_fuente()` no re-baja un zip válido.
+  Las fuentes nacionales (ENIGH, EIC) se guardan dentro de cada ciudad: cada carpeta de ciudad es autocontenida.
 - `data/processed/<ciudad>/fuentes_usadas_01.csv` y `fuentes_usadas_02.csv`: URL, edición, archivo local, bytes, fecha y SHA-256 de cada fuente usada.
 - `data/processed/<ciudad>/fuentes_cliente_<cliente>_00.csv` (y hoja "Datos del cliente" del xlsx del 00): archivo, filas, fecha y SHA-256
-  de las **ventas y el CP del cliente** (insumos críticos; están en `data/raw/<cliente>/`, fuera de git: no se suben ni se sustituyen).
+  de las **ventas y el CP del cliente** (insumos críticos; están en `data/raw/merida/bepensa/`, fuera de git: no se suben ni se sustituyen).
 - `notebooks/ejecutados/<ciudad>/*.ipynb`: notebooks ejecutados con todas sus salidas. `notebooks/*.ipynb` quedan limpios.
 - Las URLs viven solo en `src/config.py` → `FUENTES` (y `MG_VERSION`). Los notebooks 01 y 02 las muestran y verifican con HEAD.
 Si un xlsx de `outputs/` está abierto en Excel, falla la escritura (aparece el archivo lock `~$...`).
@@ -75,6 +81,13 @@ están en `outputs/` y `data/processed/` (raíz).
 - 7,455 PDV del CP en la ZM, 5,978 con venta. Mediana 2.07 cajas/mes de vida; Gini 0.58; KM S(12 m) = 0.86.
 - 04: hogares por **área de manzana** (no centroide) + rurales, actualizados a 2025: 403,069 hogares. Mediana 18 hexágonos por área (≈ 0.27 km²);
   53 PDV sin hogares a ≤ 300 m (con centroides eran 576). Moran I = 0.058 (p = 0.005); 75 asociaciones robustas de 82.
+- 00b AltScore (`enrichedgeodata/`, 24 part-*.parquet): 91,677 pos_id (UUID v4) pero 11,950 contextos únicos (87% de filas repetidas;
+  bloque digital 1,068 vectores): las señales son por zona, la estadística va por contexto único. **La exportación no trae lat/lon ni
+  hexIdx** → no se une a PDV (el 04 lo detecta y sigue solo con INEGI). Índice NSE AltScore = PC1 de iOS, macOS, viajes e idiomas no
+  españoles (α = 0.70; los 7 proxies a priori daban 0.32); validez: ρ = +0.20 con costo de vida, +0.22 con visitas. Faltantes OSM no MCAR.
+  Selección (reglas R1-R6, `altscore_senales_*.csv`): n efectivo por zonas (no por valores); 21 dimensiones por análisis paralelo;
+  pasan índice NSE + 17 señales (una por dimensión, res 8); 46 en reserva, 17 descartadas. QA: α fuera de muestra 0.69,
+  90 combinaciones de umbrales → 14–18 señales (Jaccard 0.78); índice 'grueso' en 36% de filas; riesgo: proxies también marcan turismo.
 - 05 Tradicional: 5,556 tiendas. HH 786 (14%, 27% de la venta, índice 189) · HL 1,922 · LH 1,138 (47% de la venta) · LL 1,710.
   P1 = 1,554 tiendas (66% de la venta ubicada); HH verde 165. HL no activas 1,070 (56%). Piloto recomendado: HH verde y amarillo (594 tiendas,
   59 zonas H3 r7, MDE 10.3% sin línea base / 6% con línea base). Excluidas sin hogares: 51 tiendas (1% de la venta).
@@ -112,5 +125,7 @@ están en `outputs/` y `data/processed/` (raíz).
 - **Metodología Golden Stores (NielsenIQ) fija, no se cambia**: clústeres HH/HL/LH/LL con índice 100 por subcanal, Atacar/Bloquear/
   Fortalecer/Mantener, semáforos por desviación estándar, P1 = HH y LH en verde y amarillo. Deck para el canal **Tradicional**.
 - **Sin datos de ventas + CP del cliente no se avanza**: se piden (el resto de fuentes se descarga solo).
+- **AltScore = una variable socioeconómica más** (junto al NSE AMAI de INEGI), unida **solo por ubicación** (lat/lon o hexIdx).
+  El `pos_id` de AltScore no cruza con el CP y **no se infiere el cruce**: si falta la ubicación, se pide a AltScore.
 - Presentación con estilo Kin y estructura de pitch ejecutivo (BLUF, titulares de acción, ejemplos con tiendas reales, notas de orador).
 - Cadenas: Six = Tradicional; Modelorama y farmacias de cadena = Moderno (`src/cadenas.py`).

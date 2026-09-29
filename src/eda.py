@@ -8,6 +8,8 @@ Contenido:
 - dependencia: dependencias (Spearman con IC de Fisher, Pearson sobre log1p, informacion mutua, q de BH)
 - grupos: efecto_categorico (Kruskal-Wallis + epsilon^2 con IC bootstrap), comparaciones_pares (Mann-Whitney + delta de Cliff)
 - espacial: vecinos_radio, moran_i (autocorrelacion), spearman_bloques (IC por bootstrap de bloques)
+- multivariado: matriz_spearman (n efectivo + BH), psd, kmo_bartlett, analisis_paralelo (Horn), varimax,
+  correlacion_parcial, meng_z (correlaciones dependientes)
 - otros: z_robusto, ic_bootstrap, cramer_v, kaplan_meier
 - graficos: estilo() con la paleta validada de la skill dataviz
 """
@@ -246,6 +248,109 @@ def spearman_bloques(x, y, grupos, B=500, nivel=0.95, seed=SEMILLA):
         bs.append(stats.spearmanr(d.x.values[sel], d.y.values[sel])[0])
     a = (1 - nivel) / 2
     return stats.spearmanr(d.x, d.y)[0], *np.nanquantile(bs, [a, 1 - a])
+
+
+# ─────────────────────────────── estructura multivariada ───────────────────────────────
+def matriz_spearman(df: pd.DataFrame, cols, zonas: dict | None = None):
+    """Spearman por pares (casos completos de cada par) con n, p y q de BH sobre el triángulo superior.
+
+    zonas = {columna: id de la zona en la que se mide} (p. ej. el vector del bloque al que pertenece la señal). Con
+    zonas, la p usa el número de combinaciones (zona de x, zona de y) DISTINTAS del par, no de filas: si varias filas
+    comparten la medición de una zona, contar filas daría p optimistas. No se cuentan valores distintos: eso castigaría
+    a los conteos discretos, que repiten valores sin repetir zona. Devuelve (rho, n, p, q) como DataFrames p × p.
+    """
+    X = df[cols]
+    rho = X.corr(method="spearman")
+    ok = X.notna().to_numpy(float)
+    n = pd.DataFrame(ok.T @ ok, index=cols, columns=cols)
+    if zonas is not None:
+        for i, a in enumerate(cols):
+            for b in cols[i + 1:]:
+                m = X[[a, b]].notna().all(axis=1).to_numpy()
+                n.loc[a, b] = n.loc[b, a] = len(set(zip(np.asarray(zonas[a])[m], np.asarray(zonas[b])[m])))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t = rho * np.sqrt((n - 2) / (1 - rho ** 2))
+    p = pd.DataFrame(2 * stats.t.sf(np.abs(t), n - 2), index=cols, columns=cols)
+    iu = np.triu_indices(len(cols), 1)
+    Q = np.full((len(cols), len(cols)), np.nan)
+    pv = p.to_numpy()[iu]
+    qv = np.full(pv.size, np.nan)
+    ok_p = ~np.isnan(pv)
+    qv[ok_p] = stats.false_discovery_control(pv[ok_p], method="bh")
+    Q[iu] = qv
+    Q[(iu[1], iu[0])] = qv
+    return rho, n, p, pd.DataFrame(Q, index=cols, columns=cols)
+
+
+def psd(R) -> np.ndarray:
+    """Proyecta una matriz de correlación por pares a semidefinida positiva (recorta autovalores negativos y reescala)."""
+    val, vec = np.linalg.eigh(np.asarray(R, float))
+    A = vec @ np.diag(np.clip(val, 1e-6, None)) @ vec.T
+    d = np.sqrt(np.diag(A))
+    return A / np.outer(d, d)
+
+
+def kmo_bartlett(R, n) -> dict:
+    """Factorabilidad de una matriz de correlación: KMO (≥ 0.6 aceptable, ≥ 0.8 bueno) por variable y global,
+    y prueba de esfericidad de Bartlett (H0: R = identidad, no hay estructura común)."""
+    R = np.asarray(R, float)
+    p = R.shape[0]
+    inv = np.linalg.inv(R)
+    parcial = -inv / np.sqrt(np.outer(np.diag(inv), np.diag(inv)))
+    np.fill_diagonal(parcial, 0)
+    r2 = R ** 2
+    np.fill_diagonal(r2, 0)
+    a2 = parcial ** 2
+    chi2 = -(n - 1 - (2 * p + 5) / 6) * np.linalg.slogdet(R)[1]
+    gl = p * (p - 1) / 2
+    return {"KMO": r2.sum() / (r2.sum() + a2.sum()), "KMO_variable": r2.sum(0) / (r2.sum(0) + a2.sum(0)),
+            "bartlett_chi2": chi2, "gl": gl, "p": stats.chi2.sf(chi2, gl)}
+
+
+def analisis_paralelo(n, p, B=200, percentil=95, seed=SEMILLA) -> np.ndarray:
+    """Análisis paralelo de Horn: autovalores de matrices de correlación de datos normales independientes (n × p).
+    Se retienen los componentes cuyo autovalor observado supera el percentil de estos (criterio más estricto que Kaiser)."""
+    rng = np.random.default_rng(seed)
+    ev = [np.linalg.eigvalsh(np.corrcoef(rng.standard_normal((int(n), p)), rowvar=False))[::-1] for _ in range(B)]
+    return np.percentile(ev, percentil, axis=0)
+
+
+def varimax(L, iteraciones=100, tol=1e-6) -> np.ndarray:
+    """Rotación varimax de una matriz de cargas (p × k): cada componente queda con pocas variables de carga alta."""
+    L = np.asarray(L, float)
+    p, k = L.shape
+    Rm, d = np.eye(k), 0
+    for _ in range(iteraciones):
+        Lr = L @ Rm
+        u, s, vt = np.linalg.svd(L.T @ (Lr ** 3 - Lr @ np.diag((Lr ** 2).sum(0)) / p))
+        Rm, d_ant, d = u @ vt, d, s.sum()
+        if d_ant and d / d_ant < 1 + tol:
+            break
+    return L @ Rm
+
+
+def correlacion_parcial(x, y, controles) -> tuple:
+    """Spearman parcial de x e y controlando por `controles` (residuos de rangos por MCO). Devuelve (rho, p, n)."""
+    d = pd.concat([pd.Series(np.asarray(x, float), name="x"), pd.Series(np.asarray(y, float), name="y"),
+                   pd.DataFrame(np.asarray(controles, float))], axis=1).dropna()
+    Rk = d.rank().to_numpy()
+    Z = np.column_stack([np.ones(len(d)), Rk[:, 2:]])
+    res = [Rk[:, j] - Z @ np.linalg.lstsq(Z, Rk[:, j], rcond=None)[0] for j in (0, 1)]
+    r = np.corrcoef(*res)[0, 1]
+    gl = len(d) - 2 - (Rk.shape[1] - 2)
+    t = r * np.sqrt(gl / (1 - r ** 2))
+    return r, 2 * stats.t.sf(abs(t), gl), len(d)
+
+
+def meng_z(r1, r2, r12, n) -> tuple:
+    """Prueba de Meng, Rosenthal y Rubin (1992) para dos correlaciones DEPENDIENTES que comparten una variable:
+    ¿corr(y, x1) = r1 difiere de corr(y, x2) = r2, si corr(x1, x2) = r12? Devuelve (z, p bilateral)."""
+    z1, z2 = np.arctanh(r1), np.arctanh(r2)
+    rm2 = (r1 ** 2 + r2 ** 2) / 2
+    f = min((1 - r12) / (2 * (1 - rm2)), 1)
+    h = (1 - f * rm2) / (1 - rm2)
+    z = (z1 - z2) * np.sqrt((n - 3) / (2 * (1 - r12) * h))
+    return z, 2 * stats.norm.sf(abs(z))
 
 
 # ─────────────────────────────── supervivencia ───────────────────────────────

@@ -20,7 +20,7 @@ interrumpida deja paquetes rotos, p. ej. pyproj sin su DLL: `instalar.py --solo-
 
 ## Paso 0 — Datos del cliente (OBLIGATORIO, sin esto no se avanza)
 
-Busca en `data/raw/<cliente>/` los dos insumos:
+Busca en `data/raw/<ciudad>/<cliente>/` (Bepensa: `data/raw/merida/bepensa/`) los dos insumos:
 
 1. **Ventas por punto de venta** (`ventas/*.csv`): id de PDV, cantidad vendida en el periodo, meses activos, primera y última venta.
 2. **Customer Potential** (`cp/*.csv`): id de PDV, **latitud y longitud**, subcanal, tamaño y potencial (cuantitativo, final, cualitativo).

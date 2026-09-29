@@ -1,6 +1,9 @@
 """Descarga robusta de archivos de INEGI (reanuda cuando el servidor corta la conexion)."""
 from contextlib import contextmanager
 from pathlib import Path
+import datetime as dt
+import hashlib
+import json
 import os
 import shutil
 import time
@@ -85,6 +88,44 @@ def _descargar(url: str, destino: Path, intentos: int, chunk: int) -> Path:
     return destino
 
 
+def descargar_fuente(f: dict) -> Path:
+    """Descarga una fuente de config.FUENTES y deja junto al zip `descarga.json` con su procedencia: institucion,
+    nombre, edicion, pagina, url, fecha de descarga, bytes y sha256. La fecha es la de la descarga real: si el zip ya
+    estaba, se conserva el json existente. Actualiza tambien el indice `fuentes.csv` de la carpeta de fuentes oficiales."""
+    p = descargar(f["url"], f["archivo"])
+    ficha = p.parent / "descarga.json"
+    with _candado(ficha):
+        previa = json.loads(ficha.read_text(encoding="utf-8")) if ficha.exists() else {}
+        if previa.get("sha256") != (sha := _sha256(p)):
+            nueva = time.time() - p.stat().st_mtime < 60      # recien bajado (descargar no toco un zip valido)
+            ficha.write_text(json.dumps({
+                "clave": f.get("clave", ""), "institucion": f["institucion"], "nombre": f["nombre"],
+                "edicion": f["edicion"], "cobertura": f.get("cobertura", ""), "pagina_oficial": f["pagina"],
+                "url": f["url"], "archivo": p.name, "bytes": p.stat().st_size, "sha256": sha,
+                "descargado": dt.datetime.fromtimestamp(p.stat().st_mtime).isoformat(timespec="seconds"),
+                "fecha_de": "descarga" if nueva else "fecha de modificacion del archivo (ya estaba en disco)",
+            }, ensure_ascii=False, indent=2), encoding="utf-8")
+    _indice(p.parents[2])
+    return p
+
+
+def _indice(raiz: Path):
+    """Reescribe <raiz>/fuentes.csv con una fila por cada descarga.json de <raiz>/<institucion>/<fuente>/."""
+    import pandas as pd
+    with _candado(raiz / "fuentes.csv"):
+        filas = [{"carpeta": str(j.parent.relative_to(raiz)), **json.loads(j.read_text(encoding="utf-8"))}
+                 for j in sorted(raiz.glob("*/*/descarga.json"))]
+        pd.DataFrame(filas).to_csv(raiz / "fuentes.csv", index=False, encoding="utf-8-sig")
+
+
+def _sha256(p: Path) -> str:
+    sha = hashlib.sha256()
+    with open(p, "rb") as fh:
+        for bloque in iter(lambda: fh.read(1 << 20), b""):
+            sha.update(bloque)
+    return sha.hexdigest()
+
+
 def _zip_ok(p: Path) -> bool:
     if p.suffix.lower() != ".zip":
         return p.stat().st_size > 0
@@ -95,13 +136,14 @@ def _zip_ok(p: Path) -> bool:
         return False
 
 
-def extraer(zip_path: Path, destino: Path) -> Path:
+def extraer(zip_path: Path, destino: Path | None = None) -> Path:
     """Descomprime `zip_path` en `destino` una sola vez (si la carpeta ya existe, la reutiliza).
+    Por defecto, `destino` es una carpeta junto al zip con su mismo nombre (sin .zip).
 
     Descomprime en una carpeta temporal y la renombra al final: nunca queda una carpeta a medias, y con el candado
     dos notebooks en paralelo no descomprimen lo mismo a la vez.
     """
-    destino = Path(destino)
+    destino = Path(destino) if destino else Path(zip_path).with_suffix("")
     with _candado(destino):
         if not destino.exists():
             tmp = destino.with_name(destino.name + f".tmp{os.getpid()}")
@@ -156,22 +198,18 @@ def registrar_fuentes(fuentes: dict, claves, destino: Path, extra: dict | None =
     Sirve para depurar: los zips de data/raw no se vuelven a descargar, y este registro dice exactamente
     con cual version de cada fuente se genero cada salida.
     """
-    import datetime as dt
-    import hashlib
     import pandas as pd
     filas = []
     for k in claves:
         f = fuentes[k]
         p = Path(f["archivo"])
-        sha = hashlib.sha256()
-        with open(p, "rb") as fh:
-            for bloque in iter(lambda: fh.read(1 << 20), b""):
-                sha.update(bloque)
+        ficha = p.parent / "descarga.json"
+        descargado = (json.loads(ficha.read_text(encoding="utf-8"))["descargado"] if ficha.exists()
+                      else dt.datetime.fromtimestamp(p.stat().st_mtime).isoformat(timespec="seconds"))
         filas.append({"fuente": k, "ciudad": _ciudad(), "cobertura": f.get("cobertura", ""),
                       "nombre": f["nombre"], "edicion": f["edicion"], "url": f["url"],
                       "pagina_oficial": f["pagina"], "archivo_local": str(p), "bytes": p.stat().st_size,
-                      "descargado": dt.datetime.fromtimestamp(p.stat().st_mtime).isoformat(timespec="seconds"),
-                      "sha256": sha.hexdigest(), **(extra or {}).get(k, {})})
+                      "descargado": descargado, "sha256": _sha256(p), **(extra or {}).get(k, {})})
     df = pd.DataFrame(filas)
     Path(destino).parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(destino, index=False, encoding="utf-8-sig")

@@ -35,7 +35,14 @@ REGION_NIELSEN, ZM_NOMBRE, ZM_MUNICIPIOS = _c["REGION_NIELSEN"], _c["ZM_NOMBRE"]
 ENIGH_ESTADOS = _c["ENIGH_ESTADOS"]
 SLUG = f"zm_{CIUDAD}"          # sufijo de archivos intermedios y entregables
 
-RAW = BASE / "data" / "raw"                       # compartido: los nombres ya llevan la clave de estado
+RAW = BASE / "data" / "raw"
+CLIENTE = "bepensa"
+CLIENTE_CIUDAD = "merida"          # los datos de Bepensa se analizan para la ZM Mérida (notebooks 00 y 04)
+# todo lo de la ciudad va en data/raw/<ciudad>/<cliente>/ (ciudad sin cliente: data/raw/<ciudad>/)
+RAW_CIUDAD = RAW / CIUDAD / (CLIENTE if CIUDAD == CLIENTE_CIUDAD else "")
+# descargas de organismos oficiales: <institucion>/<fuente>/ con el zip, lo extraido y descarga.json
+# (url, pagina, edicion, fecha de descarga, sha256); fuentes.csv en la raiz es el indice de todas
+RAW_OFICIAL = RAW_CIUDAD / "fuentes_oficiales"
 PROC = BASE / "data" / "processed" / CIUDAD
 OUT = BASE / "outputs" / CIUDAD
 for _p in (RAW, PROC, OUT):
@@ -67,21 +74,21 @@ FUENTES = {
         edicion="2020 (datos abiertos, CSV)", institucion="INEGI",
         pagina="https://www.inegi.org.mx/programas/ccpv/2020/#datos_abiertos",
         url=f"https://www.inegi.org.mx/contenidos/programas/ccpv/2020/datosabiertos/ageb_manzana/ageb_mza_urbana_{ENT}_cpv2020_csv.zip",
-        archivo=RAW / f"ageb_mza_urbana_{ENT}_cpv2020_csv.zip"),
+        archivo=RAW_OFICIAL / "INEGI" / "censo2020_ageb_manzana" / f"ageb_mza_urbana_{ENT}_cpv2020_csv.zip"),
     "iter": dict(
         cobertura=_COB_ESTADO,
         nombre="Censo de Población y Vivienda 2020 · Principales resultados por localidad (ITER)",
         edicion="2020 (datos abiertos, CSV)", institucion="INEGI",
         pagina="https://www.inegi.org.mx/programas/ccpv/2020/#datos_abiertos",
         url=f"https://www.inegi.org.mx/contenidos/programas/ccpv/2020/datosabiertos/iter/iter_{ENT}_cpv2020_csv.zip",
-        archivo=RAW / f"iter_{ENT}_cpv2020_csv.zip"),
+        archivo=RAW_OFICIAL / "INEGI" / "censo2020_iter_localidades" / f"iter_{ENT}_cpv2020_csv.zip"),
     "micro": dict(
         cobertura=_COB_ESTADO,
         nombre="Censo de Población y Vivienda 2020 · Microdatos del cuestionario ampliado (muestra)",
         edicion="2020 (CSV por entidad)", institucion="INEGI",
         pagina="https://www.inegi.org.mx/programas/ccpv/2020/#microdatos",
         url=f"https://www.inegi.org.mx/contenidos/programas/ccpv/2020/microdatos/Censo2020_CA_{ABREV_MICRO}_csv.zip",
-        archivo=RAW / f"Censo2020_CA_{ABREV_MICRO}_csv.zip"),
+        archivo=RAW_OFICIAL / "INEGI" / "censo2020_muestra_microdatos" / f"Censo2020_CA_{ABREV_MICRO}_csv.zip"),
     "mg": dict(
         cobertura=_COB_ESTADO,
         nombre=f"Marco Geoestadístico {_MG_NOMBRE[MG_VERSION]} · AGEB, manzanas y localidades del estado",
@@ -89,28 +96,28 @@ FUENTES = {
         pagina=f"https://www.inegi.org.mx/app/biblioteca/ficha.html?upc={_MG_UPC[MG_VERSION]}",
         url=("https://www.inegi.org.mx/contenidos/productos/prod_serv/contenidos/espanol/bvinegi/productos/"
              f"geografia/marcogeo/{_MG_UPC[MG_VERSION]}/{ENT}_{MG_SLUG}.zip"),
-        archivo=RAW / f"mg{MG_VERSION}_{ENT}_{MG_SLUG}.zip"),
+        archivo=RAW_OFICIAL / "INEGI" / f"marco_geoestadistico_{MG_VERSION}" / f"mg{MG_VERSION}_{ENT}_{MG_SLUG}.zip"),
     "eic": dict(
         cobertura="Nacional → hogares y viviendas por municipio de " + ", ".join(ZM_MUNICIPIOS.values()),
         nombre="Encuesta Intercensal 2025 · Principales resultados por municipio y localidad de 50 000 y más",
         edicion="2025 (publicada 2026-09-22; estimaciones con CV)", institucion="INEGI",
         pagina="https://www.inegi.org.mx/programas/eic/2025/",
         url="https://www.inegi.org.mx/contenidos/programas/eic/2025/datosabiertos/conjunto_de_datos_eic2025_105_csv.zip",
-        archivo=RAW / "conjunto_de_datos_eic2025_105_csv.zip"),
+        archivo=RAW_OFICIAL / "INEGI" / "encuesta_intercensal_2025" / "conjunto_de_datos_eic2025_105_csv.zip"),
     "enigh": dict(
         cobertura="Nacional → se usan hogares urbanos de " + ", ".join(f"{ESTADOS[e]} ({e})" for e in ENIGH_ESTADOS),
         nombre="Encuesta Nacional de Ingresos y Gastos de los Hogares (ENIGH) 2024 · nueva serie",
         edicion="2024 (publicada 2025-07-30; la más reciente)", institucion="INEGI",
         pagina="https://www.inegi.org.mx/programas/enigh/nc/2024/#datos_abiertos",
         url="https://www.inegi.org.mx/contenidos/programas/enigh/nc/2024/datosabiertos/conjunto_de_datos_enigh2024_ns_csv.zip",
-        archivo=RAW / "enigh2024_ns_csv.zip"),
+        archivo=RAW_OFICIAL / "INEGI" / "enigh2024" / "enigh2024_ns_csv.zip"),
     "denue": dict(
         cobertura=_COB_ESTADO,
         nombre="Directorio Estadístico Nacional de Unidades Económicas (DENUE) · descarga masiva por entidad",
         edicion="vigente (la edición exacta se lee de metadatos_denue.txt)", institucion="INEGI",
         pagina="https://www.inegi.org.mx/app/descarga/?ti=6",
         url=f"https://www.inegi.org.mx/contenidos/masiva/denue/denue_{ENT}_csv.zip",
-        archivo=RAW / f"denue_{ENT}_csv.zip"),
+        archivo=RAW_OFICIAL / "INEGI" / "denue" / f"denue_{ENT}_csv.zip"),
 }
 # Referencias sin descarga automatica
 REGLA_NSE = dict(
@@ -123,16 +130,18 @@ REGLA_NSE = dict(
 OSM = dict(nombre="OpenStreetMap vía Overpass API (opcional, solo alerta de tiendas faltantes)",
            pagina="https://overpass-api.de/", url="https://overpass-api.de/api/interpreter")
 
+for _k, _f in FUENTES.items():
+    _f["clave"] = _k
 URLS = {k: v["url"] for k, v in FUENTES.items()}
 ARCHIVOS = {k: v["archivo"] for k, v in FUENTES.items()}
 
 # ---- Datos del cliente (Bepensa): ventas y customer potential por punto de venta (no se suben a git) ----
-CLIENTE = "bepensa"
-CLIENTE_CIUDAD = "merida"          # los datos de Bepensa se analizan para la ZM Mérida (notebooks 00 y 04)
-CLIENTE_RAW = RAW / CLIENTE
+CLIENTE_RAW = RAW / CLIENTE_CIUDAD / CLIENTE      # data/raw/merida/bepensa/{ventas,cp}
 # el CP cubre toda la peninsula: los notebooks 00 y 04 filtran a la ZM activa y escriben en PROC / OUT de la ciudad
 CLIENTE_VENTAS = sorted((CLIENTE_RAW / "ventas").glob("part-*.csv"))
 CLIENTE_CP = CLIENTE_RAW / "cp" / "conservative_scenario.csv"
+# señales AltScore (dataset Spark part-*.parquet): variable socioeconómica adicional (notebook 00b; se une en el 04 solo con ubicación)
+CLIENTE_ALTSCORE = CLIENTE_RAW / "enrichedgeodata"
 # Area de influencia de cada punto de venta: hexagonos H3 cuyo centro esta a <= RADIO_PDV_M del punto.
 # res 10: arista ~76 m, area ~0.015 km2 (del tamano de una manzana) -> 300 m ~ 19 hexagonos (~0.28 km2).
 AJUSTE_HOGARES = "eic2025"      # 04: hogares 2020 × crecimiento de población 2020→2025 por municipio (EIC 2025); None = Censo 2020
