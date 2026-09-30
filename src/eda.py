@@ -10,7 +10,7 @@ Contenido:
 - espacial: vecinos_radio, moran_i (autocorrelacion), spearman_bloques (IC por bootstrap de bloques)
 - multivariado: matriz_spearman (n efectivo + BH), psd, kmo_bartlett, analisis_paralelo (Horn), varimax,
   correlacion_parcial, meng_z (correlaciones dependientes)
-- otros: z_robusto, ic_bootstrap, cramer_v, kaplan_meier
+- otros: z_robusto, ic_bootstrap, cramer_v, kappa_cohen (concordancia de clasificaciones), cliff_bloques, kaplan_meier
 - graficos: estilo() con la paleta validada de la skill dataviz
 """
 import numpy as np
@@ -59,6 +59,33 @@ def cramer_v(tabla) -> float:
     t = np.asarray(tabla, float)
     chi2 = stats.chi2_contingency(t, correction=False)[0]
     return float(np.sqrt(chi2 / (t.sum() * (min(t.shape) - 1))))
+
+
+def kappa_cohen(a, b) -> float:
+    """kappa de Cohen entre dos clasificaciones de los mismos casos (1 = acuerdo total, 0 = el acuerdo del azar).
+    Lectura de Landis-Koch: < 0.2 pobre, 0.2-0.4 regular, 0.4-0.6 moderado, 0.6-0.8 bueno, > 0.8 casi perfecto."""
+    d = pd.DataFrame({"a": np.asarray(a, object), "b": np.asarray(b, object)}).dropna()
+    niveles = sorted(set(d.a) | set(d.b))
+    t = pd.crosstab(d.a, d.b).reindex(index=niveles, columns=niveles, fill_value=0).to_numpy(float)
+    n = t.sum()
+    po, pe = np.trace(t) / n, (t.sum(0) @ t.sum(1)) / n ** 2
+    return float((po - pe) / (1 - pe)) if pe < 1 else np.nan
+
+
+def cliff_bloques(grupo_a, y, bloques, B=500, nivel=0.95, seed=SEMILLA):
+    """delta de Cliff de y entre grupo_a (booleano) y el resto, con IC por bootstrap de BLOQUES espaciales (se remuestrean
+    bloques completos, como spearman_bloques). Devuelve (delta, inferior, superior)."""
+    d = pd.DataFrame({"a": np.asarray(grupo_a, bool), "y": np.asarray(y, float), "g": np.asarray(bloques)}).dropna()
+    idx = d.groupby("g").indices
+    llaves = np.array(list(idx))
+    rng = np.random.default_rng(seed)
+    bs = []
+    for _ in range(B):
+        s = d.iloc[np.concatenate([idx[k] for k in rng.choice(llaves, llaves.size)])]
+        if s.a.any() and (~s.a).any():
+            bs.append(cliff_delta(s.y[s.a], s.y[~s.a]))
+    a = (1 - nivel) / 2
+    return cliff_delta(d.y[d.a], d.y[~d.a]), *np.quantile(bs, [a, 1 - a])
 
 
 # ─────────────────────────────── distribucion ───────────────────────────────

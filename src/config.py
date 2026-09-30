@@ -18,6 +18,7 @@ CIUDADES = {
         ZM_NOMBRE="ZM Mérida",
         ZM_MUNICIPIOS={"013": "Conkal", "041": "Kanasín", "050": "Mérida", "100": "Ucú", "101": "Umán"},
         ENIGH_ESTADOS=["04", "23", "27", "31"],         # peninsula + Tabasco
+        RAPPI_CIUDAD=["MERIDA"],                         # etiqueta `city` de Rappi (normalizada: "Mérida" y "Merida")
     ),
     "guadalajara": dict(
         ENT="14", NOM_ENT="Jalisco", ABREV_MICRO="jal", MG_SLUG="jalisco",
@@ -27,12 +28,13 @@ CIUDADES = {
                        "051": "Juanacatlán", "070": "El Salto", "097": "Tlajomulco de Zúñiga",
                        "098": "San Pedro Tlaquepaque", "101": "Tonalá", "120": "Zapopan", "124": "Zapotlanejo"},
         ENIGH_ESTADOS=["01", "06", "14", "16", "18"],   # Jalisco + Ags, Colima, Michoacan, Nayarit
+        RAPPI_CIUDAD=["GUADALAJARA"],
     ),
 }
 _c = CIUDADES[CIUDAD]
 ENT, NOM_ENT, ABREV_MICRO, MG_SLUG = _c["ENT"], _c["NOM_ENT"], _c["ABREV_MICRO"], _c["MG_SLUG"]
 REGION_NIELSEN, ZM_NOMBRE, ZM_MUNICIPIOS = _c["REGION_NIELSEN"], _c["ZM_NOMBRE"], _c["ZM_MUNICIPIOS"]
-ENIGH_ESTADOS = _c["ENIGH_ESTADOS"]
+ENIGH_ESTADOS, RAPPI_CIUDAD = _c["ENIGH_ESTADOS"], _c["RAPPI_CIUDAD"]
 SLUG = f"zm_{CIUDAD}"          # sufijo de archivos intermedios y entregables
 
 RAW = BASE / "data" / "raw"
@@ -43,8 +45,10 @@ RAW_CIUDAD = RAW / CIUDAD / (CLIENTE if CIUDAD == CLIENTE_CIUDAD else "")
 # descargas de organismos oficiales: <institucion>/<fuente>/ con el zip, lo extraido y descarga.json
 # (url, pagina, edicion, fecha de descarga, sha256); fuentes.csv en la raiz es el indice de todas
 RAW_OFICIAL = RAW_CIUDAD / "fuentes_oficiales"
-PROC = BASE / "data" / "processed" / CIUDAD
-OUT = BASE / "outputs" / CIUDAD
+# intermedios y entregables con la misma estructura ciudad -> bottler que data/raw (ciudad sin cliente: sin subcarpeta)
+PROC = BASE / "data" / "processed" / CIUDAD / (CLIENTE if CIUDAD == CLIENTE_CIUDAD else "")
+OUT = BASE / "outputs" / CIUDAD / (CLIENTE if CIUDAD == CLIENTE_CIUDAD else "")     # Excel de analisis y QA (00-04, 06)
+OUT_CLIENTE = OUT / "cliente"          # solo lo que se entrega al cliente: presentacion y Excel final (notebook 05)
 for _p in (RAW, PROC, OUT):
     _p.mkdir(parents=True, exist_ok=True)
 
@@ -142,11 +146,42 @@ CLIENTE_VENTAS = sorted((CLIENTE_RAW / "ventas").glob("part-*.csv"))
 CLIENTE_CP = CLIENTE_RAW / "cp" / "conservative_scenario.csv"
 # señales AltScore (dataset Spark part-*.parquet): variable socioeconómica adicional (notebook 00b; se une en el 04 solo con ubicación)
 CLIENTE_ALTSCORE = CLIENTE_RAW / "enrichedgeodata"
+ALTSCORE_RES = 8           # celda H3 a la que se proyecta AltScore (res 8 = escala de sus señales OSM; lo digital es de ~1 km)
 # Area de influencia de cada punto de venta: hexagonos H3 cuyo centro esta a <= RADIO_PDV_M del punto.
 # res 10: arista ~76 m, area ~0.015 km2 (del tamano de una manzana) -> 300 m ~ 19 hexagonos (~0.28 km2).
 AJUSTE_HOGARES = "eic2025"      # 04: hogares 2020 × crecimiento de población 2020→2025 por municipio (EIC 2025); None = Censo 2020
 H3_RES = 10
 RADIO_PDV_M = 300          # definido con el usuario: el area llega hasta 300 m (500 m es demasiado lejos)
+
+# ---- Rappi: panel nacional de venta en linea (data/raw/rappi/, no se sube a git; notebook 00c) ----
+# Decision del usuario: el proyecto es SUEROS E HIDRATACION de la ciudad activa; si una linea viene con otros productos, lo que
+# importa es que tenga sueros o sus derivados (regla "sueros primero" en src/rappi.py: subcategoria de Rappi, marca, nombre del
+# producto; solo sale lo que tiene evidencia de NO ser suero, p. ej. Vitamin Water = agua funcional). La ZM se toma por poligono
+# municipal (la etiqueta `city` solo se verifica). Ventana: termina con las ventas del cliente (ago-2026) y empieza en ene-2025
+# porque en oct-dic 2024 el archivo no trae cadena, vertical ni la 2a marca competidora en todo el pais (notebook 00c, 1.3).
+RAPPI_CSV = RAW / "rappi" / "rappi.csv"
+RAPPI_CATEGORIA = "Bebidas Hidratantes"                               # Product_Category_2 de Rappi
+RAPPI_SUBCATEGORIAS = {"Hidratantes Líquidos": "Sueros (hidratantes)",  # Product_Category_3 de Rappi -> subcategoria del proyecto
+                       "Isotónicos Líquidos": "Isotónicos (derivados)"}
+RAPPI_VENTANA = ("2025-01-01", "2026-09-01")                          # [inicio, fin): 20 meses con cobertura completa
+RAPPI_MIN_PEDIDOS = 12     # tienda Rappi "activa" en hidratacion: >= 12 pedidos en la ventana (uno cada ~2 meses)
+
+# ---- Letras por PDV (notebook 06, solo canal Tradicional y solo datos del CP; usuario, 2026-09-30) ----
+# Letra 1 = NSE de su CLUSTER NSE: el hexagono H3 de res NSE_CLUSTER_RES que contiene al PDV; su centro es el punto NSE y el
+# buffer de RADIO_PDV_M alrededor del centro da el NSE (res 9: arista ~174 m, todo PDV queda a <= ~210 m del centro, dentro del
+# buffer). Todos los PDV del hexagono comparten su NSE. Letra 2 = venta + CP del PDV contra los PDV con venta de su buffer.
+NSE_CLUSTER_RES = 9
+# AltScore MUEVE EL NSE del cluster (usuario, 2026-09-30): su indice alrededor del centro se lleva a la escala de N (1-6) por
+# cuantiles y N* = (1 - peso) * N_INEGI + peso * N_AltScore, solo donde el buffer tiene >= ALTSCORE_MIN_PUNTOS puntos con indice.
+ALTSCORE_PESO_NSE = 0.25   # INEGI pesa 3 veces lo que AltScore (el Censo por manzana confirma a INEGI; a validar con el usuario)
+ALTSCORE_MIN_PUNTOS = 5
+# Rappi premia a la locacion MOVIENDO SU VENTA (decision del usuario, 2026-09-30): la venta de sueros e hidratacion de cada tienda
+# Rappi activa se pasa a cajas y se reparte en partes iguales entre los PDV con venta a <= RADIO_PDV_M, que la suman a la suya.
+RAPPI_BOTELLAS_CAJA = 12   # botellas de suero o isotonico por caja Bepensa: pasa la venta Rappi a cajas (a confirmar con Bepensa)
+FRONTERA = 10              # |indice - 100| <= FRONTERA: la letra cambia con poco ruido (se marca, igual que en el 05)
+# Letra 2 (usuario, 2026-09-30): venta y potencial salen del CP (PotentialQuantitative_TotalPortafolio y
+# PotentialQuantitativeFinal_TotalPortafolio); ya no se usa el archivo de ventas. El potencial va en cajas enteras:
+CP_UMBRAL_REDONDEO = 0.6   # decimal < 0.6 -> hacia abajo (0.59 -> 0, 1.55 -> 1); >= 0.6 -> hacia arriba (0.6 -> 1, 1.6 -> 2)
 
 SCIAN_TIENDAS = {
     "462111": "Supermercado",

@@ -137,10 +137,11 @@ def hoja_tabla(wb, nombre, df, formatos=None, anchos=None, semaforo_col=None, cl
 
 
 def hoja_tabla_2niveles(wb, nombre, df, titulo=None, nota=None, formatos=None, anchos=None, colores_grupo=None,
-                        fijar_cols=2, indice_alto=105, indice_bajo=95, nombre_indice="Indice"):
+                        fijar_cols=2, indice_alto=105, indice_bajo=95, nombre_indice="Indice", fuentes=None):
     """Tabla con encabezado de 2 niveles (columnas MultiIndex: grupo, subcolumna).
     formatos = {(grupo, sub) o sub: formato}; colores_grupo = {grupo: color del bloque}; las subcolumnas `nombre_indice`
-    se resaltan en lima si ≥ indice_alto y en gris si ≤ indice_bajo (mismo criterio que el deck)."""
+    se resaltan en lima si ≥ indice_alto y en gris si ≤ indice_bajo (mismo criterio que el deck).
+    fuentes = {(grupo, sub): texto}: tercera fila de encabezado con de dónde sale cada columna (fuente o fórmula)."""
     ws = wb.create_sheet(nombre)
     ws.sheet_view.showGridLines = False
     fila0 = 1
@@ -175,27 +176,36 @@ def hoja_tabla_2niveles(wb, nombre, df, titulo=None, nota=None, formatos=None, a
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     ws.row_dimensions[fila0].height = 30
     ws.row_dimensions[fila0 + 1].height = 42
+    extra = 0
+    if fuentes:                                    # fila de fuentes: de dónde sale cada columna
+        extra = 1
+        for j, col in enumerate(cols, 1):
+            c = ws.cell(fila0 + 2, j, fuentes.get(col, ""))
+            c.font = Font(name=F, size=7.5, italic=True, color=GRIS)
+            c.fill = _relleno(FONDO)
+            c.alignment = Alignment(horizontal="center", vertical="top", wrap_text=True)
+        ws.row_dimensions[fila0 + 2].height = 52
     fmt = [formatos.get(col, formatos.get(col[1])) for col in cols]
-    for i, fila in enumerate(df.itertuples(index=False), fila0 + 2):
+    for i, fila in enumerate(df.itertuples(index=False), fila0 + 2 + extra):
         for j, v in enumerate(fila, 1):
             if isinstance(v, float) and pd.isna(v):
                 continue
             c = ws.cell(i, j, v.item() if hasattr(v, "item") else v)
             if fmt[j - 1]:
                 c.number_format = fmt[j - 1]
-    ultima = fila0 + 1 + len(df)
+    ultima = fila0 + 1 + extra + len(df)
     for j, (g, sub) in enumerate(cols, 1):
         ws.column_dimensions[get_column_letter(j)].width = (anchos or {}).get(sub) or (anchos or {}).get((g, sub)) or             min(max(len(str(sub)) * 0.9, *(len(str(x)) for x in df[(g, sub)].head(200))) + 2, 40)
-    ws.freeze_panes = ws.cell(fila0 + 2, fijar_cols + 1)
+    ws.freeze_panes = ws.cell(fila0 + 2 + extra, fijar_cols + 1)
     fin = get_column_letter(len(cols))
-    ws.auto_filter.ref = f"A{fila0 + 1}:{fin}{ultima}"
+    ws.auto_filter.ref = f"A{fila0 + 1 + extra}:{fin}{ultima}"
     for j, (g, sub) in enumerate(cols, 1):
         if sub == nombre_indice:
-            r = f"{get_column_letter(j)}{fila0 + 2}:{get_column_letter(j)}{ultima}"
+            r = f"{get_column_letter(j)}{fila0 + 2 + extra}:{get_column_letter(j)}{ultima}"
             ws.conditional_formatting.add(r, CellIsRule(operator="greaterThanOrEqual", formula=[str(indice_alto)], fill=_relleno(LIMA),
                                                         font=Font(name=F, bold=True, color=NEGRO)))
             ws.conditional_formatting.add(r, CellIsRule(operator="lessThanOrEqual", formula=[str(indice_bajo)], font=Font(name=F, color=GRIS_MEDIO)))
-    ws.conditional_formatting.add(f"A{fila0 + 2}:{fin}{ultima}", FormulaRule(formula=[f"MOD(ROW(),2)=0"], fill=_relleno(FONDO)))
+    ws.conditional_formatting.add(f"A{fila0 + 2 + extra}:{fin}{ultima}", FormulaRule(formula=[f"MOD(ROW(),2)=0"], fill=_relleno(FONDO)))
     return ws
 
 

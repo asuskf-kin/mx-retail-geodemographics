@@ -6,3 +6,6 @@ __pycache__/
 *.xlsx
 /docs
 *.pptx
+outputs/**/*.html
+.venv/
+*.lock

@@ -67,7 +67,7 @@ def main():
             print(f"  -> Sin ventas y CP no se puede avanzar: pedirlos al cliente y copiarlos a {C.CLIENTE_RAW}")
     except Exception as e:
         print("No se pudo leer src/config.py:", e)
-    print("Siguiente: python src/correr.py --pasos 00,01,02,03,04,05 <ciudad>")
+    print("Siguiente: uv run python src/correr.py --pasos 00,00b,00c,01,02,03,04,05,06 <ciudad>")
     return 0 if not malos else 1
 
 

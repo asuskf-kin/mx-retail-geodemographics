@@ -13,7 +13,8 @@ Detalle de cada pieza: [metodologia_golden_stores.md](references/metodologia_gol
 ## Instalación (una vez por máquina)
 
 ```bash
-python .claude/skills/golden-stores-kin/scripts/instalar.py     # instala requirements, registra el kernel, verifica LibreOffice y datos
+uv sync                                                          # entorno del proyecto (.venv) desde uv.lock
+uv run python .claude/skills/golden-stores-kin/scripts/instalar.py   # verifica paquetes, registra el kernel, LibreOffice y datos
 ```
 Si pip dice que un archivo está en uso, cierra los kernels de Jupyter/VS Code de ese Python y repite (una instalación
 interrumpida deja paquetes rotos, p. ej. pyproj sin su DLL: `instalar.py --solo-verificar` los detecta).
@@ -37,10 +38,11 @@ En `src/config.py`: `CLIENTE`, `CLIENTE_CIUDAD`, las rutas `CLIENTE_VENTAS` / `C
 ## Paso 2 — Correr (en paralelo, ~2 min para Mérida)
 
 ```bash
-python src/correr.py --pasos 00,01,02,03,04,05 <ciudad>
+uv run python src/correr.py --pasos 00,00b,00c,01,02,03,04,05,06 <ciudad>
 ```
-00 valida ventas × CP (variable 1: venta) · 01 hogares por AGEB · 02 tiendas DENUE · 04 perfil a ≤ 300 m (variable 2:
-demanda potencial) · 05 Golden Stores + deck + Excel. Los ejecutados quedan en `notebooks/ejecutados/<ciudad>/`.
+00 valida ventas × CP (variable 1: venta) · 00b AltScore · 00c Rappi (sueros e hidratación) · 01 hogares por AGEB · 02 tiendas DENUE ·
+04 perfil a ≤ 300 m (variable 2: demanda potencial) · 05 Golden Stores + deck + Excel · 06 Letra 1 (NSE) y Letra 2 (venta + Rappi) con
+mapa de QA. Los ejecutados quedan en `notebooks/ejecutados/<ciudad>/`; los intermedios en `data/processed/<ciudad>/<cliente>/`.
 
 ## Paso 3 — Revisar antes de entregar
 
@@ -56,7 +58,8 @@ demanda potencial) · 05 Golden Stores + deck + Excel. Los ejecutados quedan en 
 
 ## Paso 4 — Presentación ejecutiva y Excel (QA obligatorio)
 
-El 05 genera `outputs/<ciudad>/05_golden_stores_<canal>_<cliente>_zm_<ciudad>.pptx` y `.xlsx`:
+El 05 genera, en la carpeta del cliente (solo entregables), `outputs/<ciudad>/<cliente>/cliente/05_golden_stores_<canal>_<cliente>_zm_<ciudad>.pptx`
+y `.xlsx`. Los Excel de análisis y QA (00-04, 06) quedan en `outputs/<ciudad>/<cliente>/`:
 - **Deck**: metodología Golden Stores intacta, contada con la skill `/executive-pitch-presentation-builder` (BLUF: resumen y
   decisión primero; costo de la inacción; solución; evidencia; caso de negocio en cajas; ruta de 90 días con puertas de
   decisión; riesgos; anexo con metodología, datos y objeciones). Titulares de acción con cifras calculadas, **ejemplos con

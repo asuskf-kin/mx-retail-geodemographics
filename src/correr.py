@@ -3,11 +3,13 @@
 Uso (desde la raiz del repo):
     python src/correr.py merida guadalajara              -> pipeline 01-03 de cada ciudad
     python src/correr.py --pasos 00,01,02,03,04 merida   -> los notebooks indicados (Bepensa)
+    python src/correr.py --pasos 00c,06 merida            -> EDA de Rappi y letras NSE / ventas
     python src/correr.py --secuencial --pasos ... merida -> uno por uno (para depurar)
 
 - Regenera notebooks/*.ipynb desde notebooks/_src/*.py (quedan limpios, sin salidas).
 - Ejecuta en paralelo todo notebook cuyas dependencias ya terminaron (cada uno en su propio kernel):
-      nivel 1: 00 (ventas x CP), 00b (AltScore), 01 (hogares), 02 (DENUE)   nivel 2: 03 (<- 01, 02), 04 (<- 00, 00b, 01, 02)   nivel 3: 05 (<- 00, 04)
+      nivel 1: 00 (ventas x CP), 00b (AltScore), 00c (Rappi), 01 (hogares), 02 (DENUE)   nivel 2: 03 (<- 01, 02), 04 (<- 00, 00b, 01, 02)
+      nivel 3: 05 (<- 00, 04), 06 (<- 00, 00b, 00c, 01, 04)
 - Si un notebook falla, no se corre nada que dependa de el; el resto sigue.
 - Guarda cada notebook EJECUTADO en notebooks/ejecutados/<ciudad>/ (para revisar y depurar).
 - Las descargas se reutilizan desde data/raw/<ciudad>/fuentes_oficiales (con candado: dos notebooks no bajan el mismo zip a la vez).
@@ -27,15 +29,18 @@ BASE = Path(__file__).resolve().parents[1]
 NB = BASE / "notebooks"
 PASOS = ["01_socioeconomico_merida", "02_tiendas_denue_merida", "03_union_tiendas_nse"]
 # pasos del cliente (Bepensa, ZM Merida)
-PASOS_CLIENTE = ["00_ventas_cp_validacion", "00b_altscore_eda", "04_hexagonos_pdv", "05_presentacion_pdv"]
+PASOS_CLIENTE = ["00_ventas_cp_validacion", "00b_altscore_eda", "00c_rappi_eda", "04_hexagonos_pdv", "05_presentacion_pdv",
+                 "06_letras_nse_ventas"]
 DEPENDE = {                                   # notebook -> notebooks cuyas salidas necesita
     "00_ventas_cp_validacion": [],
     "00b_altscore_eda": [],
+    "00c_rappi_eda": [],
     "01_socioeconomico_merida": [],
     "02_tiendas_denue_merida": [],
     "03_union_tiendas_nse": ["01_socioeconomico_merida", "02_tiendas_denue_merida"],
     "04_hexagonos_pdv": ["00_ventas_cp_validacion", "00b_altscore_eda", "01_socioeconomico_merida", "02_tiendas_denue_merida"],
     "05_presentacion_pdv": ["00_ventas_cp_validacion", "04_hexagonos_pdv"],
+    "06_letras_nse_ventas": ["00_ventas_cp_validacion", "00b_altscore_eda", "00c_rappi_eda", "01_socioeconomico_merida", "04_hexagonos_pdv"],
 }
 
 

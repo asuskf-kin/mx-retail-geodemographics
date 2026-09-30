@@ -44,7 +44,8 @@
 #   tratadas, y efecto mínimo detectable (MDE) con el efecto de diseño por zona. Se compara piloto vs control, nunca
 #   antes vs después (las tiendas elegidas por venta alta bajan solas: regresión a la media).
 #
-# **Salidas:** `outputs/<ciudad>/05_golden_stores_<canal>_bepensa_zm_<ciudad>.pptx` y `.xlsx` (entregable por tienda).
+# **Salidas (carpeta del cliente):** `outputs/<ciudad>/<cliente>/cliente/05_golden_stores_<canal>_bepensa_zm_<ciudad>.pptx` y `.xlsx`
+# (entregable por tienda). Los Excel de análisis y QA de los otros notebooks quedan un nivel arriba, en `outputs/<ciudad>/<cliente>/`.
 # **Reproducir:** orden 00 → 01 → 02 → 03 → 04 → 05 (`python src/correr.py --pasos 00,01,02,03,04,05 merida`).
 
 # %%
@@ -770,9 +771,10 @@ def excel_corporativo(canal, b, pan, pct, indice, sem, p1, guion, ruta):
 
 for canal, (b, pan, pct, indice, sem) in res.items():
     prs, p1, guion = deck(canal, b, pan, pct, indice, sem)
-    out_ppt = C.OUT / f"05_golden_stores_{canal.lower()}_{C.CLIENTE}_{C.SLUG}.pptx"
+    C.OUT_CLIENTE.mkdir(parents=True, exist_ok=True)            # carpeta del cliente: solo presentación y Excel final
+    out_ppt = C.OUT_CLIENTE / f"05_golden_stores_{canal.lower()}_{C.CLIENTE}_{C.SLUG}.pptx"
     prs.save(out_ppt)
-    out_x = C.OUT / f"05_golden_stores_{canal.lower()}_{C.CLIENTE}_{C.SLUG}.xlsx"
+    out_x = C.OUT_CLIENTE / f"05_golden_stores_{canal.lower()}_{C.CLIENTE}_{C.SLUG}.xlsx"
     excel_corporativo(canal, b, pan, pct, indice, sem, p1, guion, out_x)
     print(f"Guardado: {out_ppt.name} ({len(prs.slides)} láminas) | {out_x.name} ({len(b):,} tiendas, {len(p1):,} P1)")
     print("\n".join(f"· {t}: {' | '.join(p)[:300]}" for t, p in guion[:1]))

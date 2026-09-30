@@ -1,6 +1,6 @@
 """QA visual de un deck: pptx → PDF (LibreOffice) → PNG por lámina + hojas de contacto de 6 láminas.
 
-Uso:  python .claude/skills/golden-stores-kin/scripts/qa_deck.py outputs/merida/05_golden_stores_tradicional_bepensa_zm_merida.pptx [carpeta]
+Uso:  python .claude/skills/golden-stores-kin/scripts/qa_deck.py outputs/merida/bepensa/cliente/05_golden_stores_tradicional_bepensa_zm_merida.pptx [carpeta]
 Luego se miran las imágenes (una por lámina y `hoja_N.png`) buscando texto desbordado, encimado o huecos.
 """
 import shutil

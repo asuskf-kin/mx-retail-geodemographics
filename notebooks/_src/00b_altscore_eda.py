@@ -3,19 +3,26 @@
 #
 # **Papel en el flujo:** AltScore es **una variable socioeconómica más**, que complementa al NSE AMAI que se construye
 # con INEGI (notebooks 01 y 04). Este notebook (1) revisa con pruebas formales la calidad, la estructura y las
-# correlaciones de las 84 señales, (2) construye el **índice NSE AltScore** y (3) **decide qué señales pasan al resto
-# del flujo** con reglas explícitas (sección 9). El notebook 04 usa el índice y las señales seleccionadas en el área de
-# 300 m de cada PDV y las compara con el NSE de INEGI, **solo si la exportación trae ubicación** (lat/lon o `hexIdx_res*`).
+# correlaciones de sus señales, (2) construye el **índice NSE AltScore** y (3) **decide qué señales pasan al resto
+# del flujo** con reglas explícitas (sección 8). El notebook 04 proyecta el índice y las señales seleccionadas al área de
+# 300 m de cada PDV **por hexágono H3** y las compara con el NSE de INEGI.
 #
-# **Fuente (del cliente, en `data/raw/merida/bepensa/enrichedgeodata/`, no se sube a git):** dataset Spark de AltScore,
-# una fila por `pos_id` (UUID). Diccionario de datos: *AltScore Data Dictionary 21/12/2022* — Geo Digital Track
-# (tráfico web por categoría, dispositivo, sistema operativo e idioma), Geo Hex Data (amenidades, edificios, vías,
-# comercios y parques OSM por celda H3 res 8/9; índices de costo de vida y conectividad) y visitas por franja.
+# **Fuente (del cliente, en `data/raw/merida/bepensa/enrichedgeodata/`, no se sube a git):** exportación
+# `geohex_geodig.parquet` de AltScore (actualizada el 2026-09-30; fecha de análisis 2024-07-16), una fila por `foreignKey`
+# (UUID, aquí `pos_id`) con su ubicación (`location.lat/lng`) y sus celdas H3 (`geoHexData_hexIdx_res7/8/9`). Diccionario:
+# *AltScore Data Dictionary 21/12/2022* — Geo Digital Track (tráfico web por categoría, dispositivo, sistema operativo e
+# idioma, en una malla de ~1 km) y Geo Hex Data (amenidades, edificios —conteo, área y altura—, vías, comercios y parques
+# OSM por celda H3 res 7/8/9; índices de costo de vida y conectividad del municipio). La exportación cubre la península:
+# **solo entra la ZM**, por ubicación dentro de sus municipios (igual que Rappi).
 #
-# **Regla de cruce: no se infiere.** El `pos_id` de AltScore es un UUID v4 (aleatorio): no coincide con el `pos_id` del
-# CP ni con el de ventas. AltScore calcula sus señales por ubicación (`lat`, `lon`, `hexIdx_res7/8/9` en el
-# diccionario). Sin esas columnas, el índice y la selección se hacen con la estructura interna de los datos, pero
-# **no se unen a ningún PDV**.
+# **Limpieza:** los códigos −999999, −999998 y −999997 son "sin dato" o error y se vuelven NaN (también en `hexIdx`). Los
+# idiomas vienen por idioma y se arman los 3 agregados de la exportación anterior (% español, % portugués y % de los demás).
+# Entran al EDA los % digitales, las métricas OSM en res 8 y res 9 y los índices del municipio; quedan fuera res 7 (≈ 5 km²,
+# mucho más grande que el área de 300 m), las reescalas `*PctOfMax`, los índices adm0/adm1 (constantes en la ZM) y los
+# conteos digitales crudos (`altscore.senales`).
+#
+# **Regla de cruce: por ubicación, nunca por `pos_id`.** El UUID de AltScore no coincide con el `pos_id` del CP ni con el
+# de ventas: la unión con los PDV la hace el 04 por el hexágono H3 de cada registro.
 #
 # **Convenciones (método retail-math-eda):**
 # * **Grano:** `pos_id` de AltScore. Si muchos PDV comparten exactamente las mismas señales (misma zona), la muestra
@@ -53,9 +60,13 @@ from scipy.spatial.distance import squareform
 from sklearn.covariance import MinCovDet
 from IPython.display import display
 
+import geopandas as gpd
+import pyarrow.parquet as pq
+
 import config as C
 import altscore as A
 import eda
+from descargas import descargar_fuente, extraer
 
 assert C.CIUDAD == C.CLIENTE_CIUDAD, f"Los datos de {C.CLIENTE} son de {C.CLIENTE_CIUDAD}; CIUDAD={C.CIUDAD}"
 eda.estilo()
@@ -67,10 +78,10 @@ print(f"Repo: {BASE} | ciudad: {C.ZM_NOMBRE} | semilla: {eda.SEMILLA} | Python {
       f"pandas {pd.__version__} · numpy {np.__version__} · scipy {scipy.__version__}")
 
 # procedencia de los archivos del cliente (igual que el notebook 00): archivo, filas, fecha y SHA-256
-partes = sorted(C.CLIENTE_ALTSCORE.glob("part-*.parquet"))
+partes = A.archivos(C.CLIENTE_ALTSCORE)
 FUENTES_ALTSCORE = pd.DataFrame([{
     "insumo": "AltScore enrichedgeodata", "archivo": p.name, "ruta": str(p.relative_to(BASE)), "bytes": p.stat().st_size,
-    "filas": pd.read_parquet(p, columns=["pos_id"]).shape[0],
+    "filas": pq.ParquetFile(p).metadata.num_rows,
     "modificado": datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
     "sha256": hashlib.sha256(p.read_bytes()).hexdigest()} for p in partes])
 FUENTES_ALTSCORE.to_csv(C.PROC / f"fuentes_cliente_{C.CLIENTE}_00b.csv", index=False)
@@ -81,20 +92,43 @@ print(f"{len(partes)} archivos · {FUENTES_ALTSCORE.bytes.sum() / 1e6:.1f} MB ·
 
 # %%
 d = A.cargar(C.CLIENTE_ALTSCORE)
-S = d.drop(columns="pos_id")
-FAM = pd.Series({c: A.familia(c) for c in S.columns})
 loc = A.ubicacion(d)
 tiene_loc = bool(loc["hex"] or (loc["lat"] and loc["lon"]))
+N_TOTAL, N_COLS = len(d), d.shape[1]
+print(f"Exportación: {N_TOTAL:,} filas · {N_COLS} columnas · {d.attrs.get('centinelas', 0):,} celdas con código de 'sin dato' "
+      f"(−999999/−999998/−999997) → NaN")
+UNIVERSO = pd.Series(dtype=int)
+if loc["lat"] and loc["lon"]:                                   # universo: solo la ZM, por ubicación dentro de sus municipios
+    descargar_fuente(C.FUENTES["mg"])
+    D_MG = extraer(C.ARCHIVOS["mg"])
+    mun = gpd.read_file(next(D_MG.rglob(f"{C.ENT}mun.shp")))
+    mun = mun[mun.CVE_MUN.isin(C.ZM_MUNICIPIOS)].to_crs(4326)
+    pts_a = gpd.GeoDataFrame(d[["pos_id"]], geometry=gpd.points_from_xy(d[loc["lon"]], d[loc["lat"]]), crs=4326)
+    en_mun = gpd.sjoin(pts_a, mun[["NOMGEO", "geometry"]], predicate="within", how="left")
+    d["municipio"] = en_mun[~en_mun.index.duplicated()].NOMGEO.reindex(d.index).to_numpy()
+    UNIVERSO = d.municipio.value_counts()
+    print(f"En la {C.ZM_NOMBRE}: {d.municipio.notna().sum():,} filas ({d.municipio.notna().mean():.1%}): "
+          + ", ".join(f"{k} {v:,}" for k, v in UNIVERSO.items()) + f" · fuera (resto de la península): {d.municipio.isna().sum():,}")
+    dig_pen = [c for c in A.senales(d) if A.familia(c) == "digital"]      # referencia: la escala anterior en toda la península
+    b_pen = d[dig_pen].dropna(subset=A.PROXIES_NSE).drop_duplicates()
+    ALFA_PENINSULA = A.alfa_cronbach(np.column_stack([A.rango_normal(b_pen[c]) for c in A.PROXIES_NSE]))
+    print(f"Referencia: los 4 proxies de la exportación anterior (iOS, macOS, viajes, idiomas no españoles) dan α = {ALFA_PENINSULA:.2f} "
+          f"en la península ({len(b_pen):,} vectores digitales)")
+    d = d[d.municipio.notna()].reset_index(drop=True)
+else:
+    ALFA_PENINSULA = np.nan
+S = d[A.senales(d)]
+FAM = pd.Series({c: A.familia(c) for c in S.columns})
 print(f"Filas: {len(d):,} · señales: {S.shape[1]} ({FAM.value_counts().to_dict()})")
 print(f"pos_id único: {d.pos_id.is_unique} · formato: UUID v{d.pos_id.str[14].mode()[0]} (aleatorio: no se deriva de otro id)")
 print("Ubicación en la exportación:", {k: v for k, v in loc.items() if v} or "NINGUNA (sin lat/lon ni hexIdx)")
 
 u = S.drop_duplicates().reset_index(drop=True)                 # contextos únicos
-FAMS = ["digital", "entorno", "contexto", "visitas"]
+FAMS = [f for f in ["digital", "entorno", "contexto", "visitas"] if (FAM == f).any()]
 grano = pd.DataFrame({f: {"señales": int((FAM == f).sum()),
                           "vectores distintos": S.loc[:, FAM == f].dropna(how="all").drop_duplicates().shape[0]} for f in FAMS}).T
 grano["filas por vector (mediana)"] = [S.loc[:, FAM == f].dropna(how="all").value_counts().median() for f in grano.index]
-print(f"Contextos únicos (las 84 señales iguales): {len(u):,} de {len(d):,} filas "
+print(f"Contextos únicos (las {S.shape[1]} señales iguales): {len(u):,} de {len(d):,} filas "
       f"({(1 - len(u) / len(d)):.0%} de las filas repite el contexto de otra)")
 display(grano)
 
@@ -103,6 +137,7 @@ composiciones = {"sistema operativo": [c for c in S if c.startswith("geoDigTrack
                  "categoría web": [c for c in S if c.startswith("geoDigTrack_cat1_")],
                  "idioma": ["not_sp_pt_lang_Pct", "sp_lang_Pct", "pt_lang_Pct"],
                  "franja de visitas": [c for c in S if c.startswith("visit_index_")]}
+composiciones = {k: v for k, v in composiciones.items() if v}                # solo las que vienen en la exportación
 cierre = pd.DataFrame({k: S[v].dropna().sum(axis=1).agg(["min", "max"]) for k, v in composiciones.items()}).T.round(3)
 cierre["complemento que se excluye"] = [A.corto(next(c for c in A.COMPLEMENTOS if c in v)) for v in composiciones.values()]
 display(cierre)
@@ -144,8 +179,10 @@ bloques = {
     "costo de vida (adm2)": ["geoHexData_idx_costOfLiving_v1_adm2"],
     "conectividad (adm2)": ["geoHexData_idx_techAndConnectivity_v1_adm2"],
     **{f"{f} res {r}": [c for c in S if f"_{f}_res{r}" in c] for f in ["amenity", "building", "shop"] for r in (8, 9)},
-    "vías res 8": [c for c in S if "_road_res8" in c], "parques res 8": [c for c in S if "_leisure_res8" in c],
+    **{f"vías res {r}": [c for c in S if f"_road_res{r}" in c] for r in (8, 9)},
+    **{f"parques res {r}": [c for c in S if f"_leisure_res{r}" in c] for r in (8, 9)},
 }
+bloques = {k: v for k, v in bloques.items() if v}                            # solo los bloques que trae la exportación
 BLOQUE_DE = {c: k for k, v in bloques.items() for c in v}
 M = pd.DataFrame({k: S[v].isna().all(axis=1) for k, v in bloques.items()})
 parcial = {k: int((S[v].isna().any(axis=1) & ~S[v].isna().all(axis=1)).sum()) for k, v in bloques.items()}
@@ -157,7 +194,10 @@ print("Anidamiento res 9 ⊂ res 8 (amenidades): sin res 8 pero con res 9 =",
 
 # índice NSE AltScore: un solo ajuste (en contextos digitales únicos) para todo el notebook; detalle en la sección 6
 base_items = u.dropna(subset=A.CANDIDATOS_NSE[:-1]).drop_duplicates(subset=[c for c in S if FAM[c] == "digital"])
-iu = A.indice_nse(u, ajuste=base_items)[0]
+CAND = [c for c in A.CANDIDATOS_NSE if "_adm" not in c and base_items[c].nunique() > 5]   # a priori y locales: los índices del
+                                                                              # municipio (adm2) miden diferencias entre municipios
+PROXIES, traza_items = A.seleccionar_proxies(base_items, CAND)               # análisis de ítems en la ZM (detalle en la sección 6)
+iu = A.indice_nse(u, cols=PROXIES, ajuste=base_items)[0]
 
 
 def boot_zona(fn, df, B=300):
@@ -227,10 +267,12 @@ clave = [c for c in A.CANDIDATOS_NSE] + ["geoHexData_idx_costOfLiving_v1_adm2", 
                                          "geoHexData_amenity_res8_count_sustenance", "geoHexData_amenity_res8_count_bank",
                                          "geoHexData_road_res8_count_residential", "geoHexData_shop_res8_count_foodAndDrink",
                                          "visits_percofmax", "weekend_visits_Pct"]
+clave = [c for c in clave if c in S.columns]
 uni = eda.univariado(u, clave)
 display(uni[["n", "ceros_%", "mediana", "mediana_IC95", "MAD_n", "p99", "asimetria", "curtosis_exc", "gini", "hill_alpha", "lectura"]].round(3))
 colas = {A.corto(c): eda.ajuste_distribuciones(u[c].dropna().to_numpy())[["familia", "AIC", "ΔAIC", "KS_D"]].iloc[0]
-         for c in ["geoHexData_building_res8_meanArea", "geoHexData_amenity_res8_count_sustenance", "geoDigTrack_os_iosPct", "visits_percofmax"]}
+         for c in ["geoHexData_building_res8_meanArea", "geoHexData_amenity_res8_count_sustenance", "geoDigTrack_os_iosPct", "visits_percofmax"]
+         if c in S.columns}
 display(pd.DataFrame(colas).T.rename_axis("mejor ajuste por AIC (lognormal, gamma, Weibull, exponencial)"))
 
 fig, axs = plt.subplots(3, 4, figsize=(14, 7.5))
@@ -406,7 +448,7 @@ plt.show()
 
 # %%
 u_idx = u.assign(indice_nse_altscore=iu, zona=ZONA["digital"])
-no_indice = [c for c in cand if c not in A.PROXIES_NSE]
+no_indice = [c for c in cand if c not in PROXIES]
 dep_idx = eda.dependencias(u_idx, no_indice, ["indice_nse_altscore"])
 dep_idx["ρ²"] = dep_idx.spearman ** 2
 fig, ax = plt.subplots(figsize=(8, 4.5))
@@ -434,6 +476,8 @@ display(dep_idx.sort_values("MI", ascending=False).head(12).assign(x=lambda t: t
 kmo = []
 for nombre, cols, base in [("digital", [c for c in cand if FAM[c] == "digital"], S[[c for c in S if FAM[c] == "digital"]].dropna().drop_duplicates()),
                            ("entorno res 8", [c for c in cand if "_res8" in c], u), ("visitas", [c for c in cand if FAM[c] == "visitas"], u)]:
+    if len(cols) < 3:                                              # bloque ausente en la exportación (p. ej. visitas)
+        continue
     Bz = pd.DataFrame({c: A.rango_normal(base[c]) for c in cols}).dropna()
     Bz = Bz.loc[:, Bz.std() > 0]
     kb = eda.kmo_bartlett(np.corrcoef(Bz.to_numpy(), rowvar=False), len(Bz))
@@ -496,43 +540,49 @@ def items(cols, base):
     r_ir = [stats.spearmanr(Z[:, k], tot - Z[:, k])[0] for k in range(len(cols))]
     return A.alfa_cronbach(Z), pd.Series(r_ir, index=cols)
 
-alfa_7, r_7 = items(A.CANDIDATOS_NSE, base_items.dropna(subset=A.CANDIDATOS_NSE))
-alfa_4, r_4 = items(A.PROXIES_NSE, base_items)
-analisis_items = pd.DataFrame({"correlación ítem-resto (7 a priori)": r_7, "correlación ítem-resto (4 finales)": r_4})
-analisis_items["se queda"] = analisis_items.index.isin(A.PROXIES_NSE)
-print(f"α de Cronbach: 7 proxies a priori = {alfa_7:.2f} · 4 finales = {alfa_4:.2f} (≥ 0.7 aceptable)")
+alfa_7, r_7 = items(CAND, base_items.dropna(subset=CAND))
+alfa_4, r_4 = items(PROXIES, base_items)
+NOMBRES_PROXIES = ", ".join(A.corto(c) for c in PROXIES)
+analisis_items = pd.DataFrame({f"correlación ítem-resto ({len(CAND)} a priori)": r_7, f"correlación ítem-resto ({len(PROXIES)} finales)": r_4})
+analisis_items["se queda"] = analisis_items.index.isin(PROXIES)
+print(f"α de Cronbach en la ZM: {len(CAND)} proxies a priori = {alfa_7:.2f} · {len(PROXIES)} finales ({NOMBRES_PROXIES}) = {alfa_4:.2f} "
+      f"(≥ 0.7 aceptable; con 2 ítems el α tiene techo bajo) · los 4 de la exportación anterior daban {ALFA_PENINSULA:.2f} en la península")
+display(traza_items.round(2))
 display(analisis_items.rename(index=A.corto).round(2))
 
-idx, cargas, var_pc1 = A.indice_nse(S, ajuste=base_items)          # mismo ajuste, aplicado a cada fila
-print(f"PC1 de los 4 proxies explica {var_pc1:.0%} de su varianza · cobertura del índice: {idx.notna().mean():.1%} de las filas")
+idx, cargas, var_pc1 = A.indice_nse(S, cols=PROXIES, ajuste=base_items)          # mismo ajuste, aplicado a cada fila
+print(f"PC1 de los {len(PROXIES)} proxies explica {var_pc1:.0%} de su varianza · cobertura del índice: {idx.notna().mean():.1%} de las filas")
 
 boot = []
 for _ in range(300):
     m = base_items.sample(len(base_items), replace=True, random_state=rng.integers(1 << 31))
-    _, w_b, _ = A.indice_nse(m.head(1), ajuste=m)
-    boot.append([*w_b.values, items(A.PROXIES_NSE, m)[0]])
-boot = pd.DataFrame(boot, columns=[*A.PROXIES_NSE, "alfa"])
+    _, w_b, _ = A.indice_nse(m.head(1), cols=PROXIES, ajuste=m)
+    boot.append([*w_b.values, items(PROXIES, m)[0]])
+boot = pd.DataFrame(boot, columns=[*PROXIES, "alfa"])
 estab = pd.DataFrame({"carga": [*cargas.values, alfa_4], "IC95 inferior": boot.quantile(0.025), "IC95 superior": boot.quantile(0.975)},
                      index=boot.columns)
 display(estab.rename(index=A.corto).round(3))
 
-Z4 = np.column_stack([A.rango_normal(base_items[c]) for c in A.PROXIES_NSE])
-mcd = MinCovDet(random_state=eda.SEMILLA).fit(Z4)
-d2 = mcd.mahalanobis(Z4)
-corte = stats.chi2.ppf(0.999, len(A.PROXIES_NSE))
+Z4 = np.column_stack([A.rango_normal(base_items[c]) for c in PROXIES])
+ok4 = ~np.isnan(Z4).any(axis=1)                                          # MCD solo con filas completas
+mcd = MinCovDet(random_state=eda.SEMILLA).fit(Z4[ok4])
+d2 = np.full(len(Z4), np.nan)
+d2[ok4] = mcd.mahalanobis(Z4[ok4])
+corte = stats.chi2.ppf(0.999, len(PROXIES))
 atip = base_items.assign(d2=d2)[d2 > corte]
-print(f"Contextos atípicos (d² robusta > χ²₀.₉₉₉ = {corte:.1f}): {len(atip):,} de {len(base_items):,} ({len(atip) / len(base_items):.1%}). "
+print(f"Contextos atípicos (d² robusta > χ²₀.₉₉₉ = {corte:.1f}): {len(atip):,} de {int(ok4.sum()):,} ({len(atip) / max(ok4.sum(), 1):.1%}). "
       "No se eliminan: el índice es por rangos y no los amplifica.")
 
 fig, ax = plt.subplots(1, 3, figsize=(15, 3.6))
-ax[0].boxplot([boot[c] for c in A.PROXIES_NSE], orientation="horizontal", widths=0.5, patch_artist=True, boxprops={"facecolor": AZUL, "alpha": 0.5})
-ax[0].set_yticks(range(1, 5), [A.corto(c) for c in A.PROXIES_NSE], fontsize=7)
+ax[0].boxplot([boot[c] for c in PROXIES], orientation="horizontal", widths=0.5, patch_artist=True, boxprops={"facecolor": AZUL, "alpha": 0.5})
+ax[0].set_yticks(range(1, len(PROXIES) + 1), [A.corto(c) for c in PROXIES], fontsize=7)
 ax[0].set_title("Cargas del índice en 300 remuestreos")
-qq = stats.chi2.ppf((np.arange(1, len(d2) + 1) - 0.5) / len(d2), len(A.PROXIES_NSE))
-ax[1].scatter(qq, np.sort(d2), s=6, color=AZUL)
+d2_ok = np.sort(d2[ok4])
+qq = stats.chi2.ppf((np.arange(1, len(d2_ok) + 1) - 0.5) / len(d2_ok), len(PROXIES))
+ax[1].scatter(qq, d2_ok, s=6, color=AZUL)
 ax[1].plot([0, qq.max()], [0, qq.max()], color=eda.MUTED, lw=1)
 ax[1].axhline(corte, color=NARANJA, ls="--", lw=1)
-ax[1].set_title("QQ de d² robusta vs χ²(4)")
+ax[1].set_title(f"QQ de d² robusta vs χ²({len(PROXIES)})")
 ax[1].set_xlabel("cuantil teórico")
 ax[1].set_ylabel("d² observada")
 ax[2].hist(idx.dropna(), bins=40, color=eda.TINTA_2)
@@ -557,6 +607,7 @@ plt.show()
 externas = ["geoHexData_idx_costOfLiving_v1_adm2", "visits_percofmax", "geoHexData_building_res8_meanArea", "geoHexData_amenity_res8_count_bank",
             "geoHexData_shop_res8_count_clothing", "geoHexData_amenity_res8_count_sustenance", "geoHexData_road_res8_count_residential",
             "geoHexData_idx_techAndConnectivity_v1_adm2", "weekend_visits_Pct"]
+externas = [c for c in externas if c in S.columns]
 control = ["geoHexData_building_res8_count", "geoHexData_road_res8_count_residential"]
 validez = eda.dependencias(u_idx, externas, ["indice_nse_altscore"])
 parc = [eda.correlacion_parcial(u_idx.indice_nse_altscore, u_idx[x], u_idx[[c for c in control if c != x]]) for x in validez.x]
@@ -588,8 +639,8 @@ ax[0].axvline(0, color=eda.EJE, lw=1)
 ax[0].legend(loc="lower right")
 ax[0].set_title("Índice NSE AltScore vs señales externas")
 dec = pd.qcut(u_idx.indice_nse_altscore, 10, labels=False) + 1
-for x, cc in zip(["geoHexData_idx_costOfLiving_v1_adm2", "visits_percofmax", "geoHexData_building_res8_meanArea", "geoHexData_amenity_res8_count_bank"],
-                 [NARANJA, AZUL, VERDE, AMBAR]):
+for x, cc in [(x, cc) for x, cc in zip(["geoHexData_idx_costOfLiving_v1_adm2", "visits_percofmax", "geoHexData_building_res8_meanArea",
+                                          "geoHexData_amenity_res8_count_bank"], [NARANJA, AZUL, VERDE, AMBAR]) if x in S.columns]:
     pr = u_idx[x].rank(pct=True) * 100
     g = pd.DataFrame({"d": dec, "p": pr}).dropna().groupby("d").p
     mu, se = g.mean(), g.std() / np.sqrt(g.size())
@@ -631,7 +682,7 @@ plt.show()
 moda = u.apply(lambda s: s.value_counts(normalize=True).iloc[0] if s.notna().any() else 1.0)
 delta_bloque = mcar.set_index("bloque")["delta de Cliff"]
 res9_pref = set(meng.loc[meng.preferir == "res 9", "señal"])          # señales donde la prueba de Meng prefiere res 9
-DIM_INDICE = dim_de[A.PROXIES_NSE].mode()[0]                          # dimensión donde cargan los proxies del índice
+DIM_INDICE = dim_de[PROXIES].mode()[0]                          # dimensión donde cargan los proxies del índice
 BASE_SEL = pd.DataFrame(index=list(S.columns))
 BASE_SEL["familia"] = FAM
 BASE_SEL["bloque"] = BASE_SEL.index.map(BLOQUE_DE)
@@ -671,7 +722,7 @@ def seleccionar(cob_min=40, carga_min=0.4, corte_rho=0.7, cobertura="cobertura %
             dcs, mot = "descartar", "R1: razón derivada de dos % que ya están"
         elif r["moda % (contextos)"] >= 95:
             dcs, mot = "descartar", f"R1: casi constante (moda {r['moda % (contextos)']:.0f}%)"
-        elif c in A.PROXIES_NSE:
+        elif c in PROXIES:
             dcs, mot = "índice NSE", "R3: entra al índice NSE AltScore"
         elif r[cobertura] < cob_min:
             dcs, mot = "reserva", f"R2: cobertura {r[cobertura]:.0f}% < {cob_min}% (solo validación)"
@@ -702,7 +753,7 @@ display(resumen_sel)
 cols_ver = ["familia", "cobertura %", "cobertura % (contextos)", "moda % (contextos)", "dimensión", "carga máx", "ρ con índice NSE", "decisión", "motivo"]
 with pd.option_context("display.max_rows", 100, "display.max_colwidth", 70):
     display(sel.loc[SENALES_USAR, cols_ver].rename(index=A.corto).sort_values(["dimensión", "carga máx"], ascending=[True, False]).round(3))
-print(f"Pasan al flujo: índice NSE AltScore (4 proxies, dimensión {DIM_INDICE}) + {len(SENALES_USAR)} señales representantes; "
+print(f"Pasan al flujo: índice NSE AltScore ({len(PROXIES)} proxies: {NOMBRES_PROXIES}; dimensión {DIM_INDICE}) + {len(SENALES_USAR)} señales representantes; "
       f"con el índice cubren {sel.loc[SENALES_USAR, 'dimensión'].nunique() + 1} de las {K} dimensiones retenidas.")
 
 fig, ax = plt.subplots(figsize=(9, 5))
@@ -740,15 +791,14 @@ plt.show()
 
 # %%
 res_cv = []
-b7 = base_items.dropna(subset=A.CANDIDATOS_NSE)
+b7 = base_items.dropna(subset=CAND)
 for _ in range(100):
     msk = rng.random(len(b7)) < 0.5
-    ir = items(A.CANDIDATOS_NSE, b7[msk])[1]
-    elegidas = [c for c in A.CANDIDATOS_NSE if ir[c] > 0.2]
-    res_cv.append({"reproduce los 4": set(elegidas) == set(A.PROXIES_NSE), "α en la otra mitad": items(A.PROXIES_NSE, b7[~msk])[0]})
+    elegidas = A.seleccionar_proxies(b7[msk], CAND)[0]                     # la misma regla, solo con la mitad A
+    res_cv.append({"reproduce los proxies": set(elegidas) == set(PROXIES), "α en la otra mitad": items(PROXIES, b7[~msk])[0]})
 res_cv = pd.DataFrame(res_cv)
 alfa_fuera = res_cv["α en la otra mitad"]
-print(f"1) La selección en una mitad reproduce los 4 proxies en {res_cv['reproduce los 4'].mean():.0%} de las particiones; "
+print(f"1) La selección en una mitad reproduce los {len(PROXIES)} proxies en {res_cv['reproduce los proxies'].mean():.0%} de las particiones; "
       f"α fuera de muestra: mediana {alfa_fuera.median():.2f} (IC95 {alfa_fuera.quantile(0.025):.2f}–{alfa_fuera.quantile(0.975):.2f}) "
       f"vs {alfa_4:.2f} en muestra.")
 
@@ -819,12 +869,15 @@ else:
           "Al copiarla a enrichedgeodata/, el 04 la usa sin cambiar código.")
 
 hallazgos00b = pd.DataFrame([
+    ("Universo", f"La exportación trae {N_TOTAL:,} filas de la península; {len(d):,} caen en la {C.ZM_NOMBRE} por ubicación ("
+                 + ", ".join(f"{k} {v:,}" for k, v in UNIVERSO.items()) + ").",
+     "Solo la ZM entra al EDA y al flujo (misma regla que Rappi)."),
     ("Grano", f"{len(d):,} filas con pos_id único, pero solo {len(u):,} contextos distintos ({1 - len(u) / len(d):.0%} de filas repetidas); "
               f"el bloque digital tiene {grano.loc['digital', 'vectores distintos']:,} vectores.",
      "Las señales son de zona, no de PDV: estadística por contexto único y p con n efectivo."),
     ("Ubicación", "La exportación trae " + (", ".join(v for v in loc.values() if v) if tiene_loc else "solo pos_id (UUID v4) y las señales; sin lat/lon ni hexIdx"),
      "Se une por ubicación en el 04." if tiene_loc else "No se une a PDV (no se infiere el cruce): pedir la exportación con lat, lon y hexIdx."),
-    ("Composiciones", f"{len(composiciones)} grupos de % suman 1 o 100 (SO, dispositivo, web, idioma, franjas de visita).",
+    ("Composiciones", f"{len(composiciones)} grupos de % suman 1 o 100 ({', '.join(composiciones)}).",
      "Se excluye un complemento por grupo; la correlación negativa entre partes es en parte artificial."),
     ("Faltantes", f"Por bloque completo y anidados por resolución: digital {M['digital (web por zona)'].mean():.0%}, edificios res 8 "
                   f"{M['building res 8'].mean():.0%}, comercios res 8 {M['shop res 8'].mean():.0%}, costo de vida {M['costo de vida (adm2)'].mean():.0%}.",
@@ -837,22 +890,25 @@ hallazgos00b = pd.DataFrame([
      "Se usa res 8."),
     ("Estructura", f"KMO: " + ", ".join(f"{r.bloque} {r.KMO:.2f}" for r in kmo.itertuples()) + f"; Bartlett p < 0.001; análisis paralelo retiene {K} dimensiones.",
      "Las señales no se resumen en un factor: se elige una representante por dimensión."),
-    ("Índice NSE AltScore", f"4 proxies, α = {alfa_4:.2f} (los 7 a priori daban {alfa_7:.2f}); PC1 explica {var_pc1:.0%}; cobertura {idx.notna().mean():.0%} de las filas.",
+    ("Índice NSE AltScore", f"{len(PROXIES)} proxies en la ZM ({NOMBRES_PROXIES}), α = {alfa_4:.2f} (los {len(CAND)} a priori daban {alfa_7:.2f}; los 4 de la "
+                            f"exportación anterior, {ALFA_PENINSULA:.2f} en la península); PC1 explica {var_pc1:.0%}; cobertura {idx.notna().mean():.0%} de las filas.",
      "Variable socioeconómica adicional al NSE AMAI; no ajustada a la venta."),
     ("Validez convergente", "; ".join(f"{A.corto(x)}: ρ = {r:+.2f} IC zona {ic} (parcial {rp:+.2f})" for x, r, ic, rp in
                                       zip(validez.x, validez.spearman, validez["IC95 bootstrap por zona"], validez["spearman parcial (densidad)"]) if abs(r) >= 0.05),
-     "Se mueve con restaurantes, visitas y costo de vida (IC por zona excluye 0); el costo de vida es la evidencia más débil "
-     "(IC ancho, 18% de cobertura). La validación contra INEGI requiere ubicación."),
-    ("QA: índice fuera de muestra", f"La elección de los 4 proxies se repite en {res_cv['reproduce los 4'].mean():.0%} de 100 particiones; "
+     "Solo cuentan las asociaciones cuyo IC por zona excluye 0. La validación decisiva, contra el NSE AMAI de INEGI, se hace en el 04 "
+     "(ahora hay ubicación)."),
+    ("QA: índice fuera de muestra", f"La elección de los {len(PROXIES)} proxies se repite en {res_cv['reproduce los proxies'].mean():.0%} de 100 particiones; "
                                     f"α fuera de muestra {alfa_fuera.median():.2f} ({alfa_fuera.quantile(0.025):.2f}–{alfa_fuera.quantile(0.975):.2f}).",
      "Sin sesgo por elegir y medir con los mismos datos."),
     ("QA: sensibilidad de la selección", f"En {len(grid)} combinaciones de umbrales: {grid['n señales'].min()}–{grid['n señales'].max()} señales; "
                                          f"Jaccard mediano vs base {grid['jaccard vs base'].median():.2f}. Dependen del umbral: "
                                          + (", ".join(A.corto(c) for c in fragiles_base.index) or "ninguna") + ".",
      "Las estables (≥ 80%) son decisión firme; las demás son intercambiables con su sustituta de la misma dimensión."),
-    ("QA: riesgo de validez (turismo)", f"Los proxies del índice (idiomas no españoles, viajes, iOS, macOS) también marcan zonas turísticas; "
-                                        f"los {int(mcar.loc[mcar.bloque == 'vías res 8', 'contextos sin bloque'].iloc[0]):,} contextos sin vías res 8 tienen índice mediano "
-                                        f"{mcar.loc[mcar.bloque == 'vías res 8', 'mediana índice sin'].iloc[0]:.0f}.",
+    ("QA: riesgo de validez (turismo)", f"En la península viajes e idiomas no españoles se mueven con iOS y macOS (α {ALFA_PENINSULA:.2f}) porque marcan "
+                                        "ciudades turísticas; dentro de la ZM no forman escala y el análisis de ítems los deja fuera"
+                                        + (f"; los {int(mcar.loc[mcar.bloque == 'vías res 8', 'contextos sin bloque'].iloc[0]):,} contextos sin vías res 8 "
+                                           f"tienen índice mediano {mcar.loc[mcar.bloque == 'vías res 8', 'mediana índice sin'].iloc[0]:.0f}."
+                                           if (mcar.bloque == "vías res 8").any() else "."),
      "Validar contra INEGI con ubicación y marcar zonas turísticas (p. ej. hoteles DENUE 721) antes de usar el índice como NSE de residentes."),
     ("QA: grano del índice", f"Cada vector digital cubre en mediana {zonas_x_digital.median():.0f} zonas OSM (máx. {zonas_x_digital.max():,}); "
                              f"{(filas_zona > p90_grano).mean():.0%} de las filas con índice 'grueso'.",
@@ -887,8 +943,9 @@ X.hoja_tabla(wb, "Cargas varimax", L.round(3).rename(index=A.corto).rename_axis(
              titulo=f"Cargas rotadas (varimax) de las {K} dimensiones retenidas por análisis paralelo", anchos={"Señal": 32})
 X.hoja_tabla(wb, "Índice NSE", estab.round(3).rename(index=A.corto).rename_axis("Proxy").reset_index(),
              titulo="Índice NSE AltScore: cargas y α con IC95 (bootstrap B = 300)",
-             nota="Índice = percentil del 1.er componente de iOS, macOS, viajes e idiomas no españoles (normalizados por rangos).", anchos={"Proxy": 30})
-X.hoja_tabla(wb, "Ítems", analisis_items.round(2).rename(index=A.corto).rename_axis("Proxy").reset_index(), titulo="Análisis de ítems: 7 proxies a priori → 4 finales",
+             nota=f"Índice = percentil del 1.er componente de {NOMBRES_PROXIES} (normalizados por rangos), elegidos por análisis de ítems en la ZM.",
+             anchos={"Proxy": 30})
+X.hoja_tabla(wb, "Ítems", analisis_items.round(2).rename(index=A.corto).rename_axis("Proxy").reset_index(), titulo=f"Análisis de ítems en la ZM: {len(CAND)} proxies a priori → {len(PROXIES)} finales",
              anchos={"Proxy": 34})
 X.hoja_tabla(wb, "Validez", validez.assign(x=validez.x.map(A.corto)).round(4), titulo="Validez convergente: Spearman simple, parcial (sin densidad) y permutación",
              anchos={"x": 32, "y": 22})
@@ -899,7 +956,8 @@ X.hoja_tabla(wb, "QA umbrales", grid.drop(columns="señales").round(3), titulo="
              anchos={"base": 24})
 X.hoja_tabla(wb, "Datos del cliente", FUENTES_ALTSCORE, titulo="Archivos AltScore usados", anchos={"archivo": 60, "ruta": 90, "sha256": 66})
 X.portada(wb, "EDA y selección de señales AltScore", f"{C.CLIENTE.title()} · {C.ZM_NOMBRE} · enrichedgeodata",
-          [("Universo", f"{len(d):,} filas (pos_id AltScore), {len(u):,} contextos únicos, {S.shape[1]} señales."),
+          [("Universo", f"{N_TOTAL:,} filas en la exportación (península); {len(d):,} en la {C.ZM_NOMBRE} por ubicación; "
+                        f"{len(u):,} contextos únicos, {S.shape[1]} señales."),
            ("Ubicación", "Con ubicación: se une en el notebook 04." if tiene_loc else "Sin lat/lon ni hexIdx: no se une a PDV; pedir la exportación con ubicación."),
            ("Método", "retail-math-eda: integridad, faltantes (MCAR), colas, Spearman con n efectivo + BH, Kendall, permutación, Meng, "
                       "correlación parcial, KMO/Bartlett, análisis paralelo, varimax, α de Cronbach, MCD, bootstrap."),

@@ -168,15 +168,19 @@ RED_AREA["cajas_mes_mediana_pdv"] = [pdv.loc[pdv.hex.isin(v) & pdv.con_venta, "c
 # %% [markdown]
 # ## 3b. Índice NSE AltScore en el área (variable socioeconómica adicional; notebook 00b)
 #
-# AltScore calcula sus señales por ubicación. Si su exportación trae `lat`/`lon` (se asigna al hexágono H3 res 10) o
-# `hexIdx_res8/9` (cada hexágono res 10 toma el valor de su celda padre), el **índice NSE AltScore y las señales que el
-# 00b seleccionó** (reglas R1-R6) se promedian en el área de 300 m de cada PDV, entran a la tabla y a las pruebas de
-# asociación con la venta, y el índice se **valida contra el NSE AMAI de INEGI** por hexágono (Spearman con IC por
-# bootstrap de bloques H3 res 7).
+# AltScore calcula sus señales por ubicación y su exportación trae la coordenada de cada registro (`location.lat/lng`; solo
+# la ZM, 00b). **Misma regla del buffer que INEGI:** cada PDV toma las características de los **puntos AltScore que caen en
+# su buffer de 300 m** (la media de esos registros): el punto NSE proyecta sus características a los PDV cuyo buffer lo
+# contiene. Si una exportación solo trajera `hexIdx`, cada hexágono res 10 del área toma el valor de su celda
+# (`C.ALTSCORE_RES`). Así entran el **índice NSE AltScore y las señales que el 00b seleccionó** (reglas R1-R6) a la tabla y
+# a las pruebas de asociación con la venta, y el índice se **valida contra el NSE AMAI de INEGI** en el mismo buffer de cada
+# PDV (Spearman con IC por bootstrap de bloques H3 res 7).
 # **Sin ubicación no se usa: el cruce por `pos_id` no existe y no se infiere.**
 
 # %%
 import altscore as A
+from sklearn.neighbors import BallTree
+
 F_ALT = C.PROC / f"altscore_{C.CLIENTE}_{C.SLUG}.parquet"
 alt = pd.read_parquet(F_ALT) if F_ALT.exists() else None
 loc_alt = A.ubicacion(alt) if alt is not None else {}
@@ -184,31 +188,49 @@ USA_ALTSCORE = bool(loc_alt.get("hex") or (loc_alt.get("lat") and loc_alt.get("l
 validacion_alt = None
 if USA_ALTSCORE:
     cols_alt = [c for c in alt.columns if c not in {"pos_id", *[v for v in loc_alt.values() if v]}]   # índice + señales del 00b + grano
-    alt = alt.copy()            # sin dropna: una fila sin bloque digital (sin índice) sí trae sus señales OSM
-    if loc_alt["lat"] and loc_alt["lon"]:
-        res_alt = C.H3_RES
-        alt["celda"] = [h3.latlng_to_cell(a, b, res_alt) for a, b in zip(alt[loc_alt["lat"]], alt[loc_alt["lon"]])]
-    else:
-        hx = alt[loc_alt["hex"]]
-        alt["celda"] = [h3.int_to_str(int(x)) for x in hx] if pd.api.types.is_integer_dtype(hx) else hx.astype(str)   # H3 como entero o texto
+    alt = alt.copy()            # sin dropna de señales: una fila sin bloque digital (sin índice) sí trae sus señales OSM
+    if loc_alt["lat"] and loc_alt["lon"]:                           # buffer: puntos AltScore a ≤ 300 m de cada PDV
+        alt = alt.dropna(subset=[loc_alt["lat"], loc_alt["lon"]]).reset_index(drop=True)
+        arbol = BallTree(np.radians(alt[[loc_alt["lat"], loc_alt["lon"]]].to_numpy(float)), metric="haversine")
+        cerca = arbol.query_radius(np.radians(pdv[["lat", "lon"]].to_numpy(float)), r=C.RADIO_PDV_M / 6_371_000)
+        V = alt[cols_alt].to_numpy(float)
+        with np.errstate(all="ignore"):
+            ALT_AREA = pd.DataFrame([np.nanmean(V[i], axis=0) if len(i) else np.full(V.shape[1], np.nan) for i in cerca], columns=cols_alt)
+        n_pts = np.array([len(i) for i in cerca])
+        con_idx = np.array([np.isfinite(V[i, cols_alt.index("indice_nse_altscore")]).sum() if len(i) else 0 for i in cerca])
+        ALT_AREA["puntos"] = n_pts
+        ALT_AREA["cobertura_%"] = np.where(n_pts > 0, con_idx / np.maximum(n_pts, 1) * 100, 0)
+        MODO_ALT = f"buffer de {C.RADIO_PDV_M} m: puntos AltScore dentro del área de cada PDV"
+    else:                                                           # respaldo sin coordenadas: celda H3 de AltScore
+        res_alt = C.ALTSCORE_RES
+        hx = alt[loc_alt["hex"]].dropna()
+        alt = alt.loc[hx.index]
+        celda = [h3.int_to_str(int(x)) for x in hx] if pd.api.types.is_integer_dtype(hx) else hx.astype(str).tolist()   # H3 como entero o texto
+        alt["celda"] = [h if h3.get_resolution(h) <= res_alt else h3.cell_to_parent(h, res_alt) for h in celda]
         res_alt = h3.get_resolution(alt.celda.iloc[0])
-    alt_celda = alt.groupby("celda")[cols_alt].mean()
-    celdas_area = sorted({h for v in area for h in v} | set(HEX.index))
-    alt_hex = alt_celda.reindex([h if res_alt >= C.H3_RES else h3.cell_to_parent(h, res_alt) for h in celdas_area])
-    alt_hex.index = celdas_area
-    ALT_N = suma_area(alt_hex.notna().astype(float))
-    ALT_AREA = suma_area(alt_hex.fillna(0)) / ALT_N.replace(0, np.nan)          # promedio de los hexágonos del área con dato
+        alt_celda = alt.groupby("celda")[cols_alt].mean()
+        celdas_area = sorted({h for v in area for h in v} | set(HEX.index))
+        alt_hex = alt_celda.reindex([h if res_alt >= C.H3_RES else h3.cell_to_parent(h, res_alt) for h in celdas_area])
+        alt_hex.index = celdas_area
+        ALT_N = suma_area(alt_hex.notna().astype(float))
+        ALT_AREA = suma_area(alt_hex.fillna(0)) / ALT_N.replace(0, np.nan)          # promedio de los hexágonos del área con dato
+        ALT_AREA["puntos"] = np.nan
+        ALT_AREA["cobertura_%"] = ALT_N.indice_nse_altscore / np.array([max(len(v), 1) for v in area]) * 100
+        MODO_ALT = f"celda H3 res {res_alt} de AltScore (sin coordenadas)"
     ALT_AREA["indice"] = ALT_AREA.indice_nse_altscore
-    ALT_AREA["cobertura_%"] = ALT_N.indice_nse_altscore / np.array([max(len(v), 1) for v in area]) * 100
     ALT_SENALES = {f"AltScore {A.corto(c)} (área)": c for c in cols_alt if c not in ("indice_nse_altscore", "zonas_por_vector_digital")}
-    # validación contra INEGI: índice AltScore vs % de hogares A/B + C+ por hexágono con al menos 20 hogares
-    v = HEX[HEX["Total HHs"] >= 20].join(alt_hex.indice_nse_altscore.rename("alt")).dropna(subset=["alt"])
-    v["ab_cmas"] = (v["HHs_A/B"] + v["HHs_C+"]) / v["Total HHs"] * 100
-    rho_v, lo_v, hi_v = eda.spearman_bloques(v.alt, v.ab_cmas, pd.Series([h3.cell_to_parent(h, 7) for h in v.index], index=v.index), B=300)
-    validacion_alt = dict(n=len(v), rho=rho_v, lo=lo_v, hi=hi_v, res=res_alt)
-    print(f"AltScore con ubicación ({ {k: c for k, c in loc_alt.items() if c} }, celda H3 res {res_alt}): {len(alt):,} puntos → {len(alt_celda):,} celdas | "
-          f"PDV con índice en su área: {ALT_AREA.indice.notna().mean():.0%} | señales seleccionadas en el 00b: {len(ALT_SENALES)}")
-    print(f"Validación vs NSE INEGI (% A/B + C+) en {len(v):,} hexágonos: ρ = {rho_v:+.2f}, IC95 bloques [{lo_v:+.2f}, {hi_v:+.2f}]")
+    # validación contra INEGI en el mismo buffer: índice AltScore vs % de hogares A/B + C+ del área (PDV con al menos 20 hogares)
+    v = pd.DataFrame({"alt": ALT_AREA.indice.to_numpy(), "tot": HH_AREA["Total HHs"].to_numpy(),
+                      "ab_cmas": ((HH_AREA["HHs_A/B"] + HH_AREA["HHs_C+"]) / HH_AREA["Total HHs"].replace(0, np.nan) * 100).to_numpy(),
+                      "bloque": [h3.cell_to_parent(h, 7) for h in pdv.hex]})
+    v = v[(v.tot >= 20) & v.alt.notna()]
+    rho_v, lo_v, hi_v = eda.spearman_bloques(v.alt, v.ab_cmas, v.bloque, B=300)
+    validacion_alt = dict(n=len(v), rho=rho_v, lo=lo_v, hi=hi_v, modo=MODO_ALT)
+    print(f"AltScore con ubicación ({ {k: c for k, c in loc_alt.items() if c} }; {MODO_ALT}): {len(alt):,} puntos | "
+          f"PDV con índice en su área: {ALT_AREA.indice.notna().mean():.0%}"
+          + (f" (mediana {np.nanmedian(ALT_AREA.puntos):.0f} puntos AltScore por buffer)" if ALT_AREA.puntos.notna().any() else "")
+          + f" | señales seleccionadas en el 00b: {len(ALT_SENALES)}")
+    print(f"Validación vs NSE INEGI (% A/B + C+ del mismo buffer) en {len(v):,} PDV: ρ = {rho_v:+.2f}, IC95 bloques [{lo_v:+.2f}, {hi_v:+.2f}]")
 else:
     print("AltScore: la exportación no trae lat/lon ni hexIdx → no se une a los PDV (ver notebook 00b). "
           "El perfil socioeconómico queda solo con INEGI.")
@@ -249,6 +271,8 @@ ids = pd.DataFrame({
 if USA_ALTSCORE:                                           # variable socioeconómica adicional (notebook 00b)
     ids["Índice NSE AltScore (área)"] = ALT_AREA.indice.round(1).to_numpy()
     ids["Cobertura AltScore del área %"] = ALT_AREA["cobertura_%"].round(0).to_numpy()
+    if ALT_AREA.puntos.notna().any():
+        ids["Puntos AltScore a 300 m"] = ALT_AREA.puntos.to_numpy()
     if "zonas_por_vector_digital" in ALT_AREA:           # grano del índice (00b, sección 9): informativo, no entra a pruebas
         ids["Grano AltScore (zonas por vector digital)"] = ALT_AREA.zonas_por_vector_digital.round(0).to_numpy()
     for nombre, c in ALT_SENALES.items():
@@ -359,8 +383,8 @@ hallazgos04 = pd.DataFrame([
     ("CP: potencial futuro", "ρ con la venta por subcanal: " + ", ".join(f"{r.subcanal.title()} {r.spearman:+.2f}{'' if r.robusta else ' (no robusta)'}"
                                                                            for r in rob[rob.indicador == 'Potencial incremental del PDV'].itertuples()),
      "Variable de clasificación (potencial futuro), no decisiva; consistente con el 00 (sección 5.3)."),
-    ("AltScore", (f"Índice NSE AltScore vs % A/B + C+ INEGI por hexágono: ρ = {validacion_alt['rho']:+.2f} "
-                  f"(IC95 bloques [{validacion_alt['lo']:+.2f}, {validacion_alt['hi']:+.2f}], {validacion_alt['n']:,} hexágonos)")
+    ("AltScore", (f"Índice NSE AltScore vs % A/B + C+ INEGI en el mismo buffer ({validacion_alt['modo']}): ρ = {validacion_alt['rho']:+.2f} "
+                  f"(IC95 bloques [{validacion_alt['lo']:+.2f}, {validacion_alt['hi']:+.2f}], {validacion_alt['n']:,} PDV)")
                  if USA_ALTSCORE else "La exportación de AltScore no trae ubicación: no se une a los PDV (notebook 00b).",
      "Variable socioeconómica adicional en la tabla por PDV y en las pruebas de asociación con la venta." if USA_ALTSCORE
      else "Pedir a AltScore la exportación con lat, lon y hexIdx; al copiarla, este notebook la usa sin cambios."),
@@ -394,9 +418,9 @@ diccionario = pd.DataFrame([
     ("Canal / Cadena", "Moderno = cadena identificada por nombre (farmacias de cadena, Modelorama, conveniencia); Tradicional = independientes y Six. Regla única en src/cadenas.py (igual que DENUE)."),
     ("Fuente de hogares", "Censo 2020 por manzana (urbano) + ITER 2020 (localidades rurales) + microsimulación (notebook 01), repartidos por "
                           "área de manzana entre hexágonos y actualizados a 2025 con el crecimiento de población municipal de la Intercensal 2025."),
-] + ([("Índice NSE AltScore (área)", "Percentil 0-100 del índice AltScore (iOS, macOS, viajes e idiomas no españoles; notebook 00b), "
-                                   f"promedio de los hexágonos a ≤ {C.RADIO_PDV_M} m con dato. Complementa al NSE AMAI de INEGI."),
-        ("Cobertura AltScore del área %", "Hexágonos del área con dato AltScore / hexágonos del área."),
+] + ([("Índice NSE AltScore (área)", "Percentil 0-100 del índice NSE AltScore (PC1 de sus proxies digitales, elegidos por análisis de ítems "
+                                   f"en la ZM; notebook 00b), media de los puntos AltScore a ≤ {C.RADIO_PDV_M} m del PDV. Complementa al NSE AMAI de INEGI."),
+        ("Cobertura AltScore del área %", "Puntos AltScore del buffer con índice / puntos AltScore del buffer."),
         ("Grano AltScore (zonas por vector digital)", "Zonas OSM que comparten el vector digital del que sale el índice (promedio del área): "
                                                      "alto = índice grueso, no distingue dentro de su zona (notebook 00b, sección 9)."),
         ("AltScore ... (área)", "Señal AltScore seleccionada en el notebook 00b (reglas R1-R6), promedio de los hexágonos del área con dato.")]
