@@ -179,6 +179,12 @@ ALTSCORE_MIN_PUNTOS = 5
 # RADIO_PDV_M); cada variable pasa a su pct_rank descendente entre los PDV con venta (0 = el que mas vende) y el score es su
 # media ponderada; H si score < LETRA2_CORTE. Los rangos evitan convertir Rappi (pesos) a cajas. El PDV sin venta es L.
 LETRA2_PESOS = {"venta": 2, "cp": 2, "rappi": 1}   # Rappi pesa la mitad: no castigar tanto al PDV sin Rappi cerca
+# Guiado por el CP (usuario, 2026-10-01): la categoria del cliente es "sueros" (CustomCat_sueros del CP; ventas = sueros; Nielsen
+# "T. Sueros" vs "Electrolit + Suerox"). La venta media y el potencial salen de esas columnas y Rappi cuenta solo sueros Coca-Cola
+# (Flashlyte); Powerade es isotonico y queda fuera. El 06 escribe la trazabilidad de los productos tomados y excluidos.
+CP_CATEGORIA = "CustomCat_sueros"                 # sufijo de columnas del CP (antes "TotalPortafolio")
+RAPPI_FABRICANTE = "COCA-COLA"                    # Product_Maker_Standard de Rappi
+RAPPI_SUBCATEGORIAS_L2 = ["Sueros (hidratantes)"] # subcategoria del proyecto (rappi.clasificar) que entra a la Letra 2
 LETRA2_CORTE = 0.4
 FRONTERA = 10              # |indice - 100| <= FRONTERA: la letra cambia con poco ruido (se marca, igual que en el 05)
 # Letra 2: venta (PotentialQuantitative_TotalPortafolio) y potencial (PotentialQuantitativeFinal_TotalPortafolio) salen del CP;

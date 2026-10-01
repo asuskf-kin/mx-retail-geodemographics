@@ -354,6 +354,9 @@ print(FINAL_L1)
 # los que acertamos su letra, en las dos formas de inferirla:
 # **QA 1 · tiendas alrededor** (la letra de la mayoría de nuestras tiendas Tradicional a 500 m) y **QA 2 · punto geográfico**
 # (nuestro proceso de la Letra 1 aplicado en la coordenada del supermercado). El detalle técnico queda en los notebooks.
+# Una segunda hoja, **Tiendas**, trae cada supermercado con su coordenada, su primera letra de Nielsen y nuestra estimación,
+# enriquecido con **calles** (las dos vialidades más cercanas del Marco Geoestadístico: la de enfrente y la de la esquina) y su
+# **manzana** (clave, AGEB, hogares 2020 y el índice del Censo de esa manzana).
 
 # %%
 import excel_kin as X
@@ -375,9 +378,56 @@ resumen["% de acierto"] = (resumen["% de acierto"] * 100).round(0)
 display(resumen)
 NOTA = ("% de acierto = % de supermercados de Nielsen (Golden Stores Sueros FY'23, ZM Mérida) con la misma letra que la nuestra. "
         "Nielsen es canal Moderno y nosotros Tradicional: no hay tiendas en común, se compara la zona.")
+# hoja Tiendas: coordenada, letras y enriquecimiento con calles y manzanas (Marco Geoestadístico de INEGI)
+descargar_fuente(C.FUENTES["mg"])
+D_MG = extraer(C.ARCHIVOS["mg"])
+CRS_M = mzg.crs
+pts_m = gpd.GeoDataFrame(zm[["Nielsen ID"]], geometry=gpd.points_from_xy(zm.lon, zm.lat), crs=4326).to_crs(CRS_M)
+caja = pts_m.total_bounds + np.array([-300, -300, 300, 300])
+ejes = gpd.read_file(next(D_MG.rglob(f"{C.ENT}e.shp")), bbox=tuple(gpd.GeoSeries.from_xy([caja[0], caja[2]], [caja[1], caja[3]], crs=CRS_M)
+                                                              .to_crs(gpd.read_file(next(D_MG.rglob(f"{C.ENT}e.shp")), rows=1).crs).total_bounds))
+ejes = ejes.to_crs(CRS_M)
+ejes = ejes[~ejes.NOMVIAL.fillna("Ninguno").isin(["Ninguno", "", "Sin Nombre", "SIN NOMBRE"])].reset_index(drop=True)
+calles = []
+for g_ in pts_m.geometry:
+    cerca = ejes.assign(d=ejes.distance(g_)).nsmallest(40, "d")
+    cerca = cerca.sort_values("d").drop_duplicates("NOMVIAL")
+    c1 = cerca.iloc[0] if len(cerca) else None
+    c2 = cerca.iloc[1] if len(cerca) > 1 else None
+    calles.append({"calle más cercana": f"{c1.TIPOVIAL} {c1.NOMVIAL}" if c1 is not None else None, "distancia a la calle (m)": round(c1.d) if c1 is not None else None,
+                   "esquina / 2.ª calle": f"{c2.TIPOVIAL} {c2.NOMVIAL}" if c2 is not None else None, "distancia a la 2.ª calle (m)": round(c2.d) if c2 is not None else None})
+calles = pd.DataFrame(calles)
+mz_shp = gpd.read_file(next(D_MG.rglob(f"{C.ENT}m.shp")), bbox=tuple(gpd.GeoSeries.from_xy([caja[0], caja[2]], [caja[1], caja[3]], crs=CRS_M)
+                                                                  .to_crs(gpd.read_file(next(D_MG.rglob(f"{C.ENT}m.shp")), rows=1).crs).total_bounds)).to_crs(CRS_M)
+jm = gpd.sjoin_nearest(pts_m, mz_shp[["CVEGEO", "TIPOMZA", "geometry"]], how="left", distance_col="distancia a la manzana (m)")
+jm = jm[~jm.index.duplicated()]
+manz = pd.DataFrame({"manzana (CVEGEO)": jm.CVEGEO.to_numpy(), "tipo de manzana": jm.TIPOMZA.to_numpy(),
+                     "distancia a la manzana (m)": jm["distancia a la manzana (m)"].round(0).to_numpy()})
+manz["AGEB"] = manz["manzana (CVEGEO)"].str[:13]
+manz["hogares de la manzana (Censo 2020)"] = manz["manzana (CVEGEO)"].map(mzg.set_index("CVEGEO").hog).round(0)
+manz["índice Censo de la manzana (0-100)"] = manz["manzana (CVEGEO)"].map(cz.set_index("CVEGEO").indice_censo).round(0)
+L1_06 = np.where(zm.N_cluster_alt >= CORTE_06["N_cluster_alt"], "H", "L")
+L1_rel = np.where(zm.N_cluster_alt >= zm.N_cluster_alt.mean(), "H", "L")
+tiendas = pd.concat([pd.DataFrame({
+    "tienda Nielsen": zm["Store Name"].astype(str).str.replace(r"\s*-\s*\d+X\d+$", "", regex=True).str.strip(), "Nielsen ID": zm["Nielsen ID"],
+    "cadena": zm.cadena, "latitud": zm.lat.round(6), "longitud": zm.lon.round(6), "dirección (Nielsen)": zm["Dirección"], "colonia (Nielsen)": zm["Colonia"],
+    "CP": zm["Código Postal"], "municipio": zm.Municipio, "1.ª letra Nielsen": zm.L1n, "nuestra 1.ª letra (como hoy)": L1_06,
+    "acierta (como hoy)": np.where(L1_06 == zm.L1n, "sí", "no"), "nuestra 1.ª letra (corte relativo)": L1_rel,
+    "acierta (corte relativo)": np.where(L1_rel == zm.L1n, "sí", "no"), "NSE Nielsen (1-6)": zm.N_nielsen.round(2),
+    "NSE nuestro del clúster (1-6)": zm.N_cluster_alt.round(2)}), calles, manz], axis=1)
+display(tiendas.head(10))
+print(f"Tiendas: aciertan {(tiendas['acierta (como hoy)'] == 'sí').mean():.0%} como hoy y {(tiendas['acierta (corte relativo)'] == 'sí').mean():.0%} "
+      f"con corte relativo; calle a ≤ 50 m en {(calles['distancia a la calle (m)'] <= 50).mean():.0%}; dentro de su manzana en "
+      f"{(manz['distancia a la manzana (m)'] == 0).mean():.0%}.")
+
 wb = X.libro()
 X.hoja_tabla(wb, "QA en %", resumen, titulo="¿Cuánto le atinamos a las letras de Nielsen?", nota=NOTA, ajustar=True,
              formatos={"% de acierto": r"0\%"}, anchos={"QA": 26, "cómo se infiere la letra": 62, "letra": 34, "% de acierto": 14, "supermercados": 14})
+X.hoja_tabla(wb, "Tiendas", tiendas, titulo="Cada supermercado de Nielsen: su primera letra y la nuestra, con calles y manzana",
+             nota="Calles y manzanas: Marco Geoestadístico INEGI (ejes de vialidad y manzanas). 'Como hoy' = corte del 06; 'corte relativo' = media de los 65.",
+             formatos={"latitud": "0.000000", "longitud": "0.000000"},
+             anchos={"tienda Nielsen": 40, "dirección (Nielsen)": 40, "colonia (Nielsen)": 26, "calle más cercana": 30, "esquina / 2.ª calle": 30,
+                     "manzana (CVEGEO)": 20})
 XLSX = OUT / f"QA_en_porcentaje_{C.CLIENTE}_{C.SLUG}.xlsx"
 try:
     wb.save(XLSX)

@@ -265,7 +265,12 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
   comparten su NSE** ("Solo la Letra 1 del clúster"); AltScore lo mueve (ver AltScore); índice 100 por subcanal del CP. **Letra 2** (del
   PDV, regla del usuario del 2026-09-30): **tabla intermedia con el vector** `pos_id, venta media, CP, Rappi`, con **Rappi = suma de los pedidos/mes
   de sueros e isotónicos de las tiendas Rappi del buffer de 300 m del PDV ÷ número de tiendas** (todas las tiendas físicas; 0 si no hay;
-  **pedidos, no pesos**: usuario, 2026-10-01). En las presentaciones **no se usa el signo $** (usuario, 2026-10-01). Cada variable
+  **pedidos, no pesos**: usuario, 2026-10-01). En las presentaciones **no se usa el signo $** (usuario, 2026-10-01).
+  **Guiado por el CP (usuario, 2026-10-01):** la categoría del cliente es **sueros** (`CustomCat_sueros`; Nielsen "T. Sueros" vs
+  "Electrolit + Suerox"): venta media, potencial y clase salen de las columnas `*_CustomCat_sueros` (`config.CP_CATEGORIA`; antes
+  `_TotalPortafolio`, que solo coincide en 81.5% de los PDV) y Rappi cuenta **solo sueros Coca-Cola** (Flashlyte;
+  `config.RAPPI_FABRICANTE` y `RAPPI_SUBCATEGORIAS_L2`): Powerade (isotónico) y los competidores quedan fuera. Trazabilidad de los
+  productos tomados y excluidos: `outputs/merida/bepensa/06_rappi_productos_tomados_bepensa_zm_merida.xlsx`. Cada variable
   pasa a su **pct_rank descendente** entre los PDV Tradicional **con venta** (0 = el que más vende; empates con rango medio) y el **score**
   = media ponderada con **pesos venta 2 · CP 2 · Rappi 1** (`LETRA2_PESOS`); **H si score < 0.4** (`LETRA2_CORTE`), si no L. **El PDV
   sin venta es L** y no entra al ranking. Ya no hay media del buffer, ni "solo en su buffer → L", ni venta Rappi movida, ni botellas por

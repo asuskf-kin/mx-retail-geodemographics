@@ -525,7 +525,7 @@ senales = pd.DataFrame([
     ("PotentialEstimatedToCover_*", "USAR", f"brecha vs PDV comparable; {rho('PotentialEstimatedToCover_TotalPortafolio')}"),
     ("PotentialRange / PotentialQualitative", "USAR · clase de potencial futuro (clasificación), leer junto al tamaño",
      f"clase Very High → Low del potencial absoluto; clasifica, no decide; {acc('PotentialQualitative_TotalPortafolio')}; {clase_tamano}"),
-    ("columnas *_CustomCat_sueros", "REDUNDANTE", "≈ *_TotalPortafolio (ρ ≈ 1): la venta solo trae la categoría sueros"),
+    ("columnas *_CustomCat_sueros", "USAR en el 06 · categoría del cliente", "≈ *_TotalPortafolio (ρ ≈ 1) pero no iguales en todos los PDV: el 06 usa sueros (usuario, 2026-10-01)"),
     ("Comparative_Client_ID_*", "SOLO TRAZABILIDAD", "PDV de referencia usado para el potencial; no es predictor"),
     ("pos_subchannel", "USAR · segmentar", f"{eps('pos_subchannel')}; comparar PDV dentro de su subcanal"),
     ("canal (Moderno / Tradicional)", "USAR · entregar por separado", f"{(cp_zm.canal == 'Moderno').sum():,} PDV Moderno de {len(cp_zm):,}; misma regla que DENUE (src/cadenas.py)"),
@@ -606,7 +606,7 @@ with pd.option_context("display.max_colwidth", None):
 
 # %%
 salida = (cp.set_index("pos_id")
-          .drop(columns=[c for c in cp.columns if c.endswith("_CustomCat_sueros")] + ["pos_latitude", "pos_longitude"])
+          .drop(columns=["pos_latitude", "pos_longitude"])                 # se conservan las columnas *_CustomCat_sueros: el 06 las usa
           .join(pdv.drop(columns=["pos_name", "pos_subchannel", "pos_size_classification", "cadena", "canal"]), how="left"))
 salida["con_venta"] = salida.cajas_total.notna()
 salida.index.name = "pos_id_cp"

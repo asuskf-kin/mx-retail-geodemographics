@@ -11,7 +11,7 @@
 #   (hexágonos en vez de centroides de AGEB: más simple en geografías complejas). **AltScore mueve el NSE**: su índice alrededor
 #   del mismo centro se combina con el de INEGI con peso λ.
 # * **Letra 2 · Ventas del PDV** (regla del usuario, 2026-09-30). Cada PDV con venta tiene un **vector**: venta media y potencial,
-#   los dos del **CP** (con decimales), y **Rappi** = pedidos/mes medios de sueros e isotónicos de las tiendas Rappi de su **buffer
+#   los dos del **CP** (con decimales), y **Rappi** = pedidos/mes medios de sueros Coca-Cola de las tiendas Rappi de su **buffer
 #   de 300 m** (suma ÷ número de tiendas; 0 si no hay). Cada variable pasa a su **rango percentil descendente** entre los PDV con
 #   venta (0 = el que más vende) y el **score** es su media ponderada con pesos **2 · 2 · 1** (Rappi pesa la mitad). **H si el
 #   score < 0.4**; si no, L. El PDV sin venta es **L** y no entra al ranking. Los rangos quitan las unidades: no hay que pasar
@@ -44,10 +44,10 @@
 # $$S_i=\frac{2\,r^{V}_i+2\,r^{CP}_i+1\,r^{R}_i}{5}\qquad L2_i=\begin{cases}H & \text{si } S_i<0.4\ L & \text{en otro caso (y todo PDV sin venta)}\end{cases}$$
 #
 # $\bar N^*_s$ = media del subcanal sobre los PDV objetivo (con venta y con hogares en su clúster NSE). $V_i$ = venta media del
-# PDV según el CP (`PotentialQuantitative_TotalPortafolio`, cajas/mes) y $CP_i$ = su potencial
-# (`PotentialQuantitativeFinal_TotalPortafolio`, cajas/mes que le faltan frente a su comparable), **con decimales**. La clase del
+# PDV según el CP (`PotentialQuantitative_CustomCat_sueros`, cajas/mes) y $CP_i$ = su potencial
+# (`PotentialQuantitativeFinal_CustomCat_sueros`, cajas/mes que le faltan frente a su comparable), **con decimales**. La clase del
 # CP (Very High → Low) sigue en el entregable. $B_i$ = tiendas físicas Rappi (00c: sueros e hidratación, ene-2025 → ago-2026) a
-# ≤ 300 m del PDV y $\text{venta}_r$ = sus **pedidos por mes de vida** de sueros e isotónicos (no pesos; usuario, 2026-10-01). $\text{pct\_rank}_{\downarrow}$ = rango percentil
+# ≤ 300 m del PDV y $\text{venta}_r$ = sus **pedidos por mes de vida** de sueros Coca-Cola (Flashlyte; Powerade es isotónico y queda fuera) (no pesos; usuario, 2026-10-01). $\text{pct\_rank}_{\downarrow}$ = rango percentil
 # descendente (1/n para el mayor, 1 para el menor; empates con rango medio), calculado sobre todos los PDV Tradicional con venta.
 # Pesos = `C.LETRA2_PESOS` y corte = `C.LETRA2_CORTE`. **Letra 2 sin Rappi**: la misma regla con pesos 2 · 2 · 0.
 #
@@ -116,7 +116,7 @@ print(f"{C.ZM_NOMBRE} · canal Tradicional · clúster NSE = hexágono H3 res {R
 #
 # Solo entran los PDV del **canal Tradicional** (abarrotes, independientes y Six; `src/cadenas.py`): se quitan los del canal
 # Moderno (Modelorama y farmacias de cadena). Del PDV se usa **solo el CP**: id, nombre, subcanal, coordenadas, venta media
-# (`PotentialQuantitative_TotalPortafolio`) y potencial (`PotentialQuantitativeFinal_TotalPortafolio`); "con venta" = venta
+# (`PotentialQuantitative_CustomCat_sueros`) y potencial (`PotentialQuantitativeFinal_CustomCat_sueros`); "con venta" = venta
 # media del CP > 0. Cada PDV cae en un **clúster NSE** (su hexágono H3 res 9) y el buffer de 300 m desde el centro del
 # clúster da sus hogares.
 
@@ -134,6 +134,11 @@ ageb = gpd.read_file(C.PROC / f"ageb_{C.SLUG}.gpkg")
 mzg = gpd.read_file(C.PROC / f"manzanas_{C.SLUG}.gpkg")
 CRS = mzg.crs
 rp = pd.read_parquet(F_RAPPI)
+lin_rp = pd.read_parquet(C.PROC / f"rappi_hidratacion_lineas_{C.SLUG}.parquet")
+lin_rp["tomada"] = lin_rp.Product_Maker_Standard.eq(C.RAPPI_FABRICANTE) & lin_rp.subcategoria.isin(C.RAPPI_SUBCATEGORIAS_L2)
+rp["pedidos_mes_hidratacion"] = rp.pedidos_mes                                   # referencia: todas las marcas, sueros e isotónicos
+rp["pedidos_tomados"] = rp.tienda_fisica.map(lin_rp[lin_rp.tomada].groupby("tienda_fisica").order_code.nunique()).fillna(0)
+rp["pedidos_mes"] = rp.pedidos_tomados / rp.meses_vida                            # lo que entra a la Letra 2: sueros Coca-Cola
 descargar_fuente(C.FUENTES["mg"])
 D_MG = extraer(C.ARCHIVOS["mg"])
 mun = gpd.read_file(next(D_MG.rglob(f"{C.ENT}mun.shp")))
@@ -145,7 +150,7 @@ REF = pd.Series([ref_zm[f"HHs_{c}"].sum() / ref_zm["Total HHs"].sum() * 100 for 
 
 MODERNO = todos.Cadena[~TRAD].value_counts()
 ids["segmento"] = ids.Subcanal                                            # subcanal del CP (pos_subchannel)
-ids["con_venta"] = ids.pos_id_cp.map(pdv0.PotentialQuantitative_TotalPortafolio).gt(0)   # con venta según el CP
+ids["con_venta"] = ids.pos_id_cp.map(pdv0[f"PotentialQuantitative_{C.CP_CATEGORIA}"]).gt(0)   # con venta según el CP
 ids["HH_area"] = ids["HHs en el área"]                                    # hogares del buffer del propio PDV (04): solo para el QA
 
 # clúster NSE: la celda H3 res 9 del PDV; su centro es el punto NSE y el buffer de 300 m desde el centro da sus hogares
@@ -629,8 +634,8 @@ plt.tight_layout(); plt.show()
 # ## 2. Letra 2 · Ventas del PDV
 # ### 2.1 Venta media y CP del PDV (los dos del CP, con decimales)
 #
-# **Qué se hace:** $V_i$ = **venta media** del PDV según el CP (`PotentialQuantitative_TotalPortafolio`, cajas/mes) y $CP_i$ =
-# su **potencial** (`PotentialQuantitativeFinal_TotalPortafolio`: cajas/mes que le faltan frente a su PDV comparable), **con
+# **Qué se hace:** $V_i$ = **venta media** del PDV según el CP (`PotentialQuantitative_CustomCat_sueros`, cajas/mes) y $CP_i$ =
+# su **potencial** (`PotentialQuantitativeFinal_CustomCat_sueros`: cajas/mes que le faltan frente a su PDV comparable), **con
 # decimales**. La clase del CP (Very High → Low) sigue en el Excel.
 #
 # **Por qué:** el CP ya trae la venta del PDV (regla del usuario, 2026-09-30: solo datos del CP). El potencial va con decimales
@@ -638,11 +643,11 @@ plt.tight_layout(); plt.show()
 # queda solo como comparación en el QA.
 
 # %%
-ids["V"] = ids.pos_id_cp.map(pdv0.PotentialQuantitative_TotalPortafolio).where(ids.con_venta)   # venta media del CP (cajas/mes)
-ids["CP"] = ids.pos_id_cp.map(pdv0.PotentialQuantitativeFinal_TotalPortafolio).where(ids.con_venta)   # potencial con decimales
+ids["V"] = ids.pos_id_cp.map(pdv0[f"PotentialQuantitative_{C.CP_CATEGORIA}"]).where(ids.con_venta)   # venta media del CP (cajas/mes)
+ids["CP"] = ids.pos_id_cp.map(pdv0[f"PotentialQuantitativeFinal_{C.CP_CATEGORIA}"]).where(ids.con_venta)   # potencial con decimales
 ids["CP_redondeado"] = LT.redondeo_cp(ids.CP, C.CP_UMBRAL_REDONDEO).to_numpy()   # solo QA: la regla anterior (cajas enteras, umbral 0.6)
 ids["I_V_seg"] = LT.indice(ids.V, ids.segmento, ids.objetivo)                  # venta (CP) vs su subcanal: respaldo de Rappi
-ids["clase_cp"] = ids.pos_id_cp.map(pdv0.PotentialQualitative_TotalPortafolio)
+ids["clase_cp"] = ids.pos_id_cp.map(pdv0[f"PotentialQualitative_{C.CP_CATEGORIA}"])
 ob = ids[ids.objetivo]
 VENTA = (f"PDV objetivo: venta media del CP mediana {ob.V.median():.2f} cajas/mes (p90 {ob.V.quantile(0.9):.2f}); CP (potencial, con decimales) "
          f"mediana {ob.CP.median():.2f}, en 0 el {(ob.CP.fillna(0) == 0).mean():.0%} (con el redondeo anterior quedaba en 0 el "
@@ -669,7 +674,7 @@ plt.tight_layout(); plt.show()
 # ### 2.2 Rappi del buffer: pedidos/mes medios de las tiendas Rappi a ≤ 300 m del PDV
 #
 # **Qué se hace:** para cada PDV se toman las **tiendas físicas Rappi** del 00c (sueros e hidratación, ene-2025 → ago-2026) a
-# ≤ 300 m y se calcula $R_i$ = **suma de sus pedidos ÷ número de tiendas** (pedidos de sueros e isotónicos por mes de vida). Si no
+# ≤ 300 m y se calcula $R_i$ = **suma de sus pedidos ÷ número de tiendas** (pedidos de sueros Coca-Cola —Flashlyte— por mes de vida). Si no
 # hay ninguna, $R_i = 0$. Se usan pedidos y no pesos (usuario, 2026-10-01): mide demanda, no precio ni tamaño del ticket.
 # Se guardan también cuántas tiendas hay, cuántas son activas y si alguna es Turbo (dark store).
 #
@@ -701,6 +706,48 @@ print(RAPPI)
 display(rp.sort_values("pedidos_mes", ascending=False)[["nombre", "tipo", "municipio", "pedidos_mes", "pedidos", "venta_mes", "% sueros", "turbo",
                                                       "activa", "pdv_con_venta_300m"]].head(15).round(1))
 
+# trazabilidad: qué productos de Rappi entran a la Letra 2 y cuáles no, con su motivo
+lin_rp["producto"] = np.where(lin_rp.Product_Maker_Standard.eq("COCA-COLA"), lin_rp.Product_Brand + " · " + lin_rp.Product_name.fillna("(sin nombre)"),
+                              lin_rp.Product_Brand.astype(str) + " · competidor anonimizado (sin nombre ni SKU)")
+lin_rp["motivo"] = np.select([lin_rp.tomada, ~lin_rp.Product_Maker_Standard.eq(C.RAPPI_FABRICANTE)],
+                             ["entra: sueros Coca-Cola", f"fuera: no es {C.RAPPI_FABRICANTE.title()} (competidor)"],
+                             "fuera: es Coca-Cola pero no es suero (isotónico)")
+agg_ = dict(pedidos=("order_code", "nunique"), lineas=("order_code", "size"), unidades=("beverage_units", "sum"), tiendas=("tienda_fisica", "nunique"),
+            meses=("mes", "nunique"), primer_mes=("mes", "min"), ultimo_mes=("mes", "max"))
+tr_prod = (lin_rp.groupby(["motivo", "Product_Maker_Standard", "Product_Brand", "subcategoria", "Product_Category_3", "producto"]).agg(**agg_)
+           .reset_index().sort_values(["motivo", "pedidos"], ascending=[True, False]))
+tr_mes = lin_rp.pivot_table(index="mes", columns="motivo", values="order_code", aggfunc="nunique", fill_value=0)
+tr_mes_prod = (lin_rp[lin_rp.tomada].groupby(["mes", "producto"]).agg(pedidos=("order_code", "nunique"), unidades=("beverage_units", "sum"),
+               tiendas=("tienda_fisica", "nunique")).reset_index())
+tr_tienda = rp[["tienda_fisica", "nombre", "tipo", "municipio", "lat", "lon", "meses_vida", "pedidos_tomados", "pedidos_mes", "pedidos_mes_hidratacion",
+                "activa", "turbo", "pdv_con_venta_300m"]].rename(columns={"pedidos_mes": "pedidos/mes tomados (Letra 2)",
+                                                                          "pedidos_mes_hidratacion": "pedidos/mes hidratación (referencia)"})
+reglas_rp = pd.DataFrame([("Universo", f"Rappi nacional → ZM {C.ZM_NOMBRE} por polígono, ventana {C.RAPPI_VENTANA[0]} → {C.RAPPI_VENTANA[1]} (00c)"),
+                          ("Categoría", "sueros e hidratación con la regla 'sueros primero' (00c, rappi.clasificar)"),
+                          ("Fabricante que entra", f"Product_Maker_Standard = {C.RAPPI_FABRICANTE} (config.RAPPI_FABRICANTE)"),
+                          ("Subcategoría que entra", ", ".join(C.RAPPI_SUBCATEGORIAS_L2) + " (config.RAPPI_SUBCATEGORIAS_L2)"),
+                          ("Por qué", "guiado por el CP: la categoría del cliente es sueros (CustomCat_sueros); Nielsen mide 'T. Sueros' vs 'Electrolit + Suerox'"),
+                          ("Métrica", "pedidos únicos con al menos un producto que entra ÷ meses de vida de la tienda física"),
+                          ("Resultado", f"{int(lin_rp.tomada.sum()):,} de {len(lin_rp):,} líneas entran ({lin_rp.tomada.mean():.0%}); "
+                                        f"{int((rp.pedidos_tomados > 0).sum())} de {len(rp)} tiendas físicas tienen pedidos que entran")],
+                         columns=["regla", "detalle"])
+print(reglas_rp.iloc[-1].detalle)
+display(tr_prod)
+import excel_kin as X_
+wb_rp = X_.libro()
+X_.hoja_tabla(wb_rp, "Reglas", reglas_rp, titulo="Qué productos de Rappi entran a la Letra 2", ajustar=True, anchos={"regla": 24, "detalle": 110})
+X_.hoja_tabla(wb_rp, "Productos", tr_prod, titulo="Productos de Rappi: entran y quedan fuera (con su motivo)", anchos={"producto": 60, "motivo": 42})
+X_.hoja_tabla(wb_rp, "Por mes", tr_mes.reset_index(), titulo="Pedidos por mes según el motivo")
+X_.hoja_tabla(wb_rp, "Por mes y producto", tr_mes_prod, titulo="Pedidos y unidades por mes de los productos que entran", anchos={"producto": 60})
+X_.hoja_tabla(wb_rp, "Por tienda", tr_tienda.round(3), titulo="Tiendas físicas Rappi: pedidos que entran y pedidos/mes", anchos={"nombre": 44})
+F_TRAZA = C.OUT / f"06_rappi_productos_tomados_{C.CLIENTE}_{C.SLUG}.xlsx"
+try:
+    wb_rp.save(F_TRAZA)
+except PermissionError:
+    F_TRAZA = F_TRAZA.with_name(F_TRAZA.stem + "_nuevo.xlsx")
+    wb_rp.save(F_TRAZA)
+print("Trazabilidad Rappi:", F_TRAZA.name)
+
 ra = gpd.GeoDataFrame(rp, geometry=gpd.points_from_xy(rp.lon, rp.lat), crs=4326).to_crs(CRS)
 rx0, ry0, rx1, ry1 = ra.total_bounds
 fig, ax = plt.subplots(1, 2, figsize=(17, 8.6), gridspec_kw={"width_ratios": [1.35, 1]})
@@ -729,7 +776,7 @@ if len(ej_r):
     MP.encuadre(ax[1], xr, yr, R300 * 1.5)
     ax[1].set_axis_off()
     ax[1].set_title(f"Ejemplo: {str(rr.Nombre)[:34]}\nRappi = {rr.rappi_suma:.1f} ÷ {rr.rappi_n} tiendas = {rr.rappi_media:.1f} pedidos/mes", fontsize=10)
-plt.suptitle(f"2.2 Rappi del buffer de {R300} m (sueros e isotónicos, pedidos por mes)", x=0.01, ha="left")
+plt.suptitle(f"2.2 Rappi del buffer de {R300} m (sueros Coca-Cola, pedidos por mes)", x=0.01, ha="left")
 plt.tight_layout(); plt.show()
 
 # %% [markdown]
@@ -1036,7 +1083,7 @@ POPUP = {"pdv": [("ID PDV", "id"), ("Nombre", "nombre"), ("Subcanal", "segmento"
                       ("Índice Censo (0-100)", "censo"), ("Índice AltScore (0-100)", "alt"), ("Puntos AltScore con índice en el buffer", "puntos"),
                       ("NSE AltScore en escala 1-6", "N_alt"), (f"Nivel NSE final = {1 - LAM:g}·INEGI + {LAM:g}·AltScore", "Nf"),
                       ("Letra 1 de sus PDV objetivo", "l1")],
-         "rappi": [("Tienda Rappi", "nombre"), ("Tipo", "tipo"), ("Municipio", "municipio"), ("Pedidos/mes de sueros e isotónicos", "pedidos_mes"),
+         "rappi": [("Tienda Rappi", "nombre"), ("Tipo", "tipo"), ("Municipio", "municipio"), ("Pedidos/mes de sueros Coca-Cola (Flashlyte)", "pedidos_mes"),
                    ("Venta sueros e hidratación (MXN/mes)", "venta_mes"),
                    ("de sueros (MXN/mes)", "venta_sueros_mes"), ("PDV con venta a 300 m", "pdv_con_venta_300m"),
                    ("Pedidos en la ventana", "pedidos"), ("% sueros", "% sueros"), ("% Coca-Cola", "% Coca-Cola"),
@@ -1125,7 +1172,7 @@ def pasos_qa(s):
          "porque": "Regla del usuario: solo datos del CP. El potencial va con decimales: redondear hacia abajo subestimaba la venta.",
          "formula": "V_i = PotentialQuantitative ;  CP_i = PotentialQuantitativeFinal"},
         {"titulo": "2.2 Rappi del buffer (300 m)", "capas": ["rappi_300", "pdv_R", "rappi"],
-         "que": f"Rappi de cada PDV = pedidos/mes medios (sueros e isotónicos) de las tiendas Rappi a ≤ {R300} m (rojo = activa, ≥ {THETA} pedidos; gris = esporádica). "
+         "que": f"Rappi de cada PDV = pedidos/mes medios de sueros Coca-Cola (Flashlyte) de las tiendas Rappi a ≤ {R300} m (rojo = activa, ≥ {THETA} pedidos; gris = esporádica). "
                 "Clic en un PDV: su buffer (negro punteado) y las tiendas Rappi dentro (anillos rojos).",
          "porque": "Rappi es demanda observada de la categoría que Bepensa no ve. Se usa la media (no la suma) y en pedidos, no pesos: mide demanda, no precio.",
          "formula": f"R_i = Σ_{{r ∈ B_i}} pedidos/mes_r / |B_i| ;  B_i = tiendas Rappi a ≤ {R300} m ;  R_i = 0 si no hay",
@@ -1223,9 +1270,9 @@ FORMULAS = [
         "I^N_i = 100 · N*_c(i) / media de N* en los PDV objetivo de su subcanal s(i). Letra 1 = H si I^N_i ≥ 100; L si I^N_i < 100. Letra 1 sin AltScore: la misma regla con N_c.",
         "Se asegura con variantes (misma regla): % ABC+ del clúster, índice del Censo por manzana (auto, computadora, internet, escolaridad), NSE del punto, NSE de la AGEB, el buffer del propio PDV y buffers de 200 y 400 m. 'NSE confirmado' = coincide con la del Censo."]),
     ("Letra 2 · Score de rangos de venta, CP y Rappi (regla del usuario, 2026-09-30)", [
-        "V_i = venta media del PDV según el CP: PotentialQuantitative_TotalPortafolio (cajas/mes). Solo datos del CP.",
-        "CP_i = PotentialQuantitativeFinal_TotalPortafolio (cajas/mes que le faltan frente a su PDV comparable), con decimales.",
-        f"R_i = pedidos/mes medios de las tiendas físicas Rappi a ≤ {R300} m del PDV: suma de sus pedidos de sueros e isotónicos por mes de vida ("
+        "V_i = venta media del PDV según el CP: PotentialQuantitative_CustomCat_sueros (cajas/mes). Solo datos del CP.",
+        "CP_i = PotentialQuantitativeFinal_CustomCat_sueros (cajas/mes que le faltan frente a su PDV comparable), con decimales.",
+        f"R_i = pedidos/mes medios de las tiendas físicas Rappi a ≤ {R300} m del PDV: suma de sus pedidos de sueros Coca-Cola (Flashlyte) por mes de vida ("
         "ene-2025 → ago-2026) ÷ número de tiendas; 0 si no hay ninguna.",
         "r^x_i = rango percentil descendente de x entre todos los PDV Tradicional con venta: 1/n para el mayor, 1 para el menor; los empates toman el rango medio.",
         f"S_i = ({PESOS_L2['venta']} · r^V + {PESOS_L2['cp']} · r^CP + {PESOS_L2['rappi']} · r^R) / {sum(PESOS_L2.values())}: Rappi pesa la mitad que la venta y el CP.",
@@ -1286,9 +1333,9 @@ def tabla_pdv(d):
     col(GOB, "Índice Censo por manzana (0-100)", d.censo_area.round(0), "INEGI Censo 2020 · auto, PC, internet, escolaridad")
     col(GOB, "NSE confirmado por el Censo", pd.Series(d.nse_confirmado, index=d.index).map(si_no).fillna(pd.Series(np.where(d.con_nse, "sin dato del Censo (manzanas protegidas)", SIN_NSE), index=d.index)),
         "letra con el Censo = letra 1 final; sin dato si las manzanas del clúster tienen dato protegido")
-    col(VEN, "Venta media (cajas/mes)", d.V.round(2), "CP Bepensa · PotentialQuantitative_TotalPortafolio")
-    col(VEN, "CP · potencial (cajas/mes)", d.CP.round(2), "CP Bepensa · PotentialQuantitativeFinal_TotalPortafolio (con decimales)")
-    col(VEN, "CP · clase de potencial", d.clase_cp.fillna("sin venta"), "CP Bepensa · PotentialQualitative_TotalPortafolio")
+    col(VEN, "Venta media (cajas/mes)", d.V.round(2), "CP Bepensa · PotentialQuantitative_CustomCat_sueros")
+    col(VEN, "CP · potencial (cajas/mes)", d.CP.round(2), "CP Bepensa · PotentialQuantitativeFinal_CustomCat_sueros (con decimales)")
+    col(VEN, "CP · clase de potencial", d.clase_cp.fillna("sin venta"), "CP Bepensa · PotentialQualitative_CustomCat_sueros")
     col(VEN, "Rappi · tiendas a 300 m", d.rappi_n, "Rappi (00c) · tiendas físicas de sueros e hidratación a ≤ 300 m del PDV")
     col(VEN, "Rappi · tiendas activas a 300 m", d.rappi_activas, f"Rappi · ≥ {THETA} pedidos de sueros o derivados")
     col(VEN, "Rappi · pedidos/mes totales del buffer", d.rappi_suma.round(2), "Rappi · suma de los pedidos/mes de sus tiendas a ≤ 300 m")
@@ -1373,7 +1420,7 @@ X.hoja_tabla(wb, "Tiendas Rappi", rp.assign(turbo=rp.turbo.map(si_no), activa=rp
     ["nombre", "tipo", "municipio", "lat", "lon", "pedidos_mes", "pedidos", "venta_mes", "venta_sueros_mes", "% sueros", "% Coca-Cola", "activa", "turbo",
      "pdv_con_venta_300m"]].round({"lat": 6, "lon": 6}).round(1).sort_values("pedidos_mes", ascending=False),
              titulo="Tiendas físicas Rappi (sueros e hidratación): su venta y los PDV con venta a 300 m",
-             nota=f"pedidos_mes = pedidos de sueros e isotónicos / meses de vida. El Rappi de cada PDV es la media de pedidos_mes de las tiendas a ≤ {R300} m.",
+             nota=f"pedidos_mes = pedidos con sueros Coca-Cola (Flashlyte) / meses de vida (detalle en 06_rappi_productos_tomados). El Rappi de cada PDV es la media de pedidos_mes de las tiendas a ≤ {R300} m.",
              formatos={"venta_mes": "#,##0", "venta_sueros_mes": "#,##0", "lat": "0.000000", "lon": "0.000000"}, barras=["pedidos_mes"], anchos={"nombre": 42})
 sin = d[d.con_venta & ~d.con_nse][["pos_id_cp", "Nombre", "Subcanal", "Latitud", "Longitud", "Municipio", "cluster_nse", "V"]]
 X.hoja_tabla(wb, "Sin NSE en su clúster", sin.round(4), titulo="PDV con venta cuyo clúster NSE no tiene hogares a 300 m (no reciben letras)",
@@ -1498,7 +1545,7 @@ bloques = [("pos_id", "Punto de venta", "CP Bepensa: id, nombre, subcanal, lat/l
            ("AltScore", "Mueve el NSE", f"Índice NSE ({' y '.join(PROX_ALT) or 'proxies digitales'}) + {len(ALT_SEN)} señales del buffer del clúster", "4A3AA7"),
            ("INEGI", "NSE del clúster", "Hogares 2025 y % por NSE del buffer, NSE del punto y de su AGEB, Censo por manzana", "1F3A5F"),
            ("Venta + CP", "CP Bepensa", "Venta media y potencial del CP, con decimales (cajas/mes)", "1E5B45"),
-           ("Rappi", "Del buffer", f"Pedidos/mes medios de las tiendas Rappi a {R300} m (sueros e isotónicos)", "1E5B45"),
+           ("Rappi", "Del buffer", f"Pedidos/mes medios de sueros Coca-Cola de las tiendas Rappi a {R300} m", "1E5B45"),
            ("Clúster", "NSE", f"Hexágono res {RES_CL} + {R300} m desde su centro; sus PDV comparten la Letra 1", "333333"),
            ("Letra 1", "sin y con AltScore", "NSE del clúster ≥ media del subcanal", K.NEGRO),
            ("Letra 2", "sin y con Rappi", f"Score de rangos 2 · 2 · 1 < {CORTE}", K.NEGRO),

@@ -453,8 +453,8 @@ plt.tight_layout(); plt.show()
 #
 # **Qué se hace:** Rappi sí observa supermercados. Se empata cada autoservicio de Nielsen con la tienda física Rappi **de su misma
 # cadena** a ≤ 200 m (Chedraui ↔ Chedraui, Walmart ↔ Walmart, San Francisco de Asís ↔ Súper Akí, …) y se mide si sus pedidos/mes
-# separan las H de las L de la 2.ª letra de Nielsen (AUC y δ de Cliff). **Solo productos Coca-Cola** (`Product_Maker_Standard` =
-# COCA-COLA: Powerade y Flashlyte, el sistema de Bepensa); el total de sueros e isotónicos (con competidores) va como comparación.
+# separan las H de las L de la 2.ª letra de Nielsen (AUC y δ de Cliff). **Solo sueros Coca-Cola** (`Product_Maker_Standard` =
+# COCA-COLA y subcategoría sueros: Flashlyte; Powerade es isotónico y queda fuera, guiado por el CP); el total de sueros e isotónicos (con competidores) va como comparación.
 # Antes, la **tabla temporal** de los productos Coca-Cola que se toman: pedidos y unidades por mes y producto.
 #
 # **Por qué:** en nuestra Letra 2 Rappi pesa 1 de 5. Si Rappi anticipa la venta medida por Nielsen en el mismo establecimiento,
@@ -473,8 +473,8 @@ def patron(cadena):
 
 
 lin = pd.read_parquet(C.PROC / f"rappi_hidratacion_lineas_{C.SLUG}.parquet")
-lin_cc = lin[lin.Product_Maker_Standard.eq("COCA-COLA")].copy()
-assert lin_cc.Product_Brand.isin(["Powerade", "Flashlyte"]).all(), "aparece otra marca Coca-Cola: revisar"
+lin_cc = lin[lin.Product_Maker_Standard.eq(C.RAPPI_FABRICANTE) & lin.subcategoria.isin(C.RAPPI_SUBCATEGORIAS_L2)].copy()   # sueros Coca-Cola (Flashlyte), como la Letra 2
+assert lin_cc.Product_Brand.isin(["Flashlyte"]).all(), "aparece otra marca de sueros Coca-Cola: revisar"
 lin_cc["producto"] = lin_cc.Product_Brand + " · " + lin_cc.Product_name.fillna("(sin nombre)")
 temporal = (lin_cc.groupby(["mes", "Product_Brand", "subcategoria", "producto"])
             .agg(pedidos=("order_code", "nunique"), unidades=("beverage_units", "sum"), tiendas=("tienda_fisica", "nunique"))
