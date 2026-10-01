@@ -75,6 +75,10 @@ del tipo **Slides** (`Artifact` → `quickstart` con `intent: "slides"`) con el 
 (instalarlo en el deck: `tokens.json`, fuentes `fonts/*.ttf` y logos PNG de `templates/kin-presentation/assets/`; los SVG no se
 copian). Mismo contenido, cifras y notas que el pptx; tablas largas se parten en dos láminas; gráficas como barras HTML editables.
 Sin signo `$`, sin "Let knowledge in", pie `kinanalytics.com` en minúsculas.
+**Lineamientos de marca (usuario, 2026-10-01): skill `brand-guidelines-kin`** (en `.claude/skills/`). Portada con foto duotono y
+título amarillo, divisores con panel amarillo en punta de hexágono, eyebrow gris y pie logo + URL: receta, assets a copiar del DS y
+excepciones en `references/claude_design_marca.md`; `scripts/marca_claude_design.py <carpeta_deck>` normaliza las láminas de
+contenido y trae `portada()`, `divisor()` y `cierre()`.
 **Un bottler o ciudad nuevos = artifacts nuevos** (trazabilidad): crear dos decks ("Golden Stores · <canal> · <BOTTLER> <Ciudad>" y
 "Letras por PDV · <BOTTLER> <Ciudad>") y registrar sus URLs en la tabla del CLAUDE.md ("Para empezar"); los decks de otros bottlers o
 ciudades no se modifican. Si es el mismo bottler y ciudad, se actualizan sus decks registrados (misma URL).

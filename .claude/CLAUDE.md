@@ -28,6 +28,11 @@ Para replicarlo en otra ciudad usa la skill `/nse-tiendas-mx` (en `.claude/skill
    |---|---|---|
    | Bepensa · ZM Mérida | https://claude.ai/artifact/W5dGqa18ux9yws1UriJkzx | https://claude.ai/artifact/JGHg6YqT9oYVr5BJ5Vx2fn |
 
+   **Lineamientos de marca = skill `brand-guidelines-kin`** (usuario, 2026-10-01; instalada en `.claude/skills/brand-guidelines-kin/`,
+   export del Kin Design System, que gana si hay conflicto). Los dos decks de Bepensa se rehicieron con ella el 2026-10-01 (portada
+   con foto duotono y título amarillo, divisores con panel en punta de hexágono, eyebrow gris, pie logo + `kinanalytics.com`).
+   Para crear o rehacer un deck: `.claude/skills/golden-stores-kin/references/claude_design_marca.md` y
+   `scripts/marca_claude_design.py` (misma skill). Los colores de dato (HH/HL/LH/LL, semáforos) se conservan para cuadrar con mapas y Excel.
    Se escriben a mano con las cifras de los notebooks ejecutados (no se generan solos): si cambian las cifras, actualizar sus láminas.
    Figuras: recortar los PNG de `notebooks/ejecutados/merida/06_*.ipynb` y subirlos como asset del artifact.
 5. **Estilo:** sin el signo **$** en presentaciones (Rappi va en pedidos/mes); nunca la frase "Let knowledge in"; URL `kinanalytics.com`
@@ -71,7 +76,8 @@ notebooks/01..03     pipeline de hogares y tiendas (correr en orden)
 notebooks/00, 00b, 00c, 04, 05, 06 cliente Bepensa (solo ZM Mérida): 00 valida ventas × CP · 00b EDA AltScore · 00c EDA Rappi (sueros e
                      hidratación) · 04 perfil por PDV a ≤300 m · 05 Golden Stores (deck + Excel) · 06 letras del canal Tradicional
                      (Letra 1 = NSE del clúster hexagonal + AltScore · Letra 2 = venta y CP del CP + Rappi)
-.claude/skills       nse-tiendas-mx (otra ciudad) · golden-stores-kin (cliente + deck, con scripts/instalar.py y qa_deck.py) ·
+.claude/skills       nse-tiendas-mx (otra ciudad) · golden-stores-kin (cliente + deck, con scripts/instalar.py, qa_deck.py y
+                     marca_claude_design.py) · brand-guidelines-kin (marca Kin: logos, fuentes, colores, template de deck) ·
                      executive-pitch-presentation-builder · retail-math-eda · archify
 data/raw/merida/bepensa/  todo lo de Mérida: ventas/ y cp/ del cliente + fuentes_oficiales/<institución>/<fuente>/ (se regeneran solas)
                      (ciudad sin cliente: data/raw/<ciudad>/fuentes_oficiales/) · data/raw/rappi/rappi.csv: Rappi nacional (fuera de git)
@@ -81,6 +87,8 @@ outputs/merida/bepensa/cliente/  SOLO lo que se entrega al cliente: 05 (deck + E
                                  Tradicional + su presentación); versiones viejas en anteriores/ (crearla al guardar una)
 docs/flujo_pipeline.*            flujograma del pipeline 00 → 06 (skill archify: .dataflow.json → .html con validate, deliver y
                                  visual-check); el anterior (solo 01-03) en docs/anteriores/. Se actualiza cuando cambia el flujo
+qa/                  QA contra la línea base de Nielsen: `qa/_src/qa_linea_base_nielsen.py` (fuente) → `qa/qa_linea_base_nielsen.ipynb`;
+                     línea base `qa/Golden Stores Sueros R.Sur - KO FY'23.xlsx` (fuera de git, *.xlsx); salida en `qa/salidas/`
 pyproject.toml · uv.lock · .python-version   proyecto uv (Python 3.14, entorno en .venv; requirements.txt queda para pip)
 ```
 
@@ -189,6 +197,17 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
 - Letras finales: HH 815 (15% de tiendas, 24% de la venta, índice 161) · HL 1,874 · LH 824 (25%) · LL 2,053; 87% igual a las letras
   base (solo INEGI + CP). Los 1,418 PDV sin venta con NSE quedan L en la Letra 2. Excel de 16 hojas (con "Vector Letra 2"); deck de 14 láminas;
   tabla intermedia en `data/processed/merida/bepensa/letra2_vector_bepensa_zm_merida.parquet`.
+
+### QA contra Nielsen (qa/, 2026-10-01; línea base = Golden Stores Sueros FY'23, canal Autoservicios, Región Sur)
+- Nielsen es **Moderno** (supermercados) y nuestras letras **Tradicional**: no hay comparación tienda a tienda; se compara la **zona**.
+  65 autoservicios en la ZM Mérida (HL 33 · LL 17 · HH 12 · LH 3). Su número de hogares no se reproduce con ningún radio ni con la AGEB
+  (ρ ≤ 0.14): su área depende del formato. El **perfil NSE** sí: ρ(N) 0.90 a 300 m (0.95 a 1.5 km), error 2.9 pp por nivel. Tamaño,
+  niños y edad del jefe se alejan (5 · 11 · 6 pp; categorías definidas distinto).
+- Su 1.ª letra es NSE contra una **referencia regional fija** (A/B 10.7% … D/E 30.2%, N = 3.01; reproduce 95% de sus letras), no el
+  número de hogares (AUC 0.51). Nuestro NSE del clúster en su coordenada: AUC 0.99; letra igual en 88% (κ 0.74) con corte relativo y
+  80% (κ 0.43) con el corte de nuestros PDV Tradicional.
+- Geografía (nuestros PDV a ≤ 500 m): Letra 1 75% (κ 0.36), Letra 2 77% (κ 0.25, esperado bajo: otro canal). Rappi de la misma
+  cadena a ≤ 200 m anticipa su 2.ª letra: AUC 0.88 [0.63, 1.00] en 39 tiendas.
 
 ### Guadalajara (10 municipios Metrópolis 2020, región Pacífico, ENIGH 01·06·14·16·18)
 - **Sin datos de cliente: el trabajo con Bepensa es solo Mérida.** Estas cifras son de la corrida con MG 2025 y sin rurales ni Intercensal;

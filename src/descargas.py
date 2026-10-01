@@ -66,7 +66,12 @@ def _descargar(url: str, destino: Path, intentos: int, chunk: int) -> Path:
                     break
                 r.raise_for_status()
                 if "text/html" in r.headers.get("Content-Type", ""):
-                    raise RuntimeError(f"INEGI devolvio HTML (URL invalida?): {url}")
+                    # INEGI a veces sirve una pagina de error (200, ~1.4 KB) en lugar del archivo: se reintenta sin guardarla
+                    if i == intentos - 1:
+                        raise RuntimeError(f"INEGI devolvio HTML en {intentos} intentos (URL invalida?): {url}")
+                    print(f"  INEGI devolvio HTML (intento {i + 1}), reintentando...")
+                    time.sleep(min(3 * (i + 1), 30))
+                    continue
                 if ya and r.status_code == 200:  # servidor ignoro Range
                     ya = 0
                 modo = "ab" if ya else "wb"
