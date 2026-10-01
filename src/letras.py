@@ -1,5 +1,5 @@
 """Letras de cada punto de venta (notebook 06; canal Tradicional y solo datos del CP): Letra 1 = NSE de su clúster NSE
-(hexágono H3 + buffer de 300 m desde su centro, movido por AltScore); Letra 2 = venta + CP + Rappi contra su clúster de venta.
+(hexágono H3 + buffer de 300 m desde su centro, movido por AltScore); Letra 2 = score de rangos de venta, CP y Rappi del buffer (pesos 2 · 2 · 1).
 
 Fórmulas (las mismas de la hoja "Fórmulas" del Excel del 06). i = PDV; s(i) = su subcanal (CP); c(i) = su clúster NSE = la
 celda H3 de res 9 que lo contiene (config.NSE_CLUSTER_RES; su centro es el punto NSE); A_c = hexágonos H3 res 10 cuyo centro
@@ -16,31 +16,21 @@ está a ≤ 300 m del centro de c; k = nivel NSE AMAI (1 = D/E, 2 = D+, 3 = C−
     I^N_i  = 100 · N*_c(i) / media_{j ∈ s(i)} N*_c(j)   índice NSE (100 = media del subcanal)
     L1_i   = H si I^N_i ≥ 100, si no L
 
-  Letra 2 (Ventas) — reglas del usuario (2026-09-30): venta media + CP contra la media de su clúster de venta; Rappi premia
-  a la locación moviendo su venta
-    V_i    = PotentialQuantitative_TotalPortafolio_i   venta media del PDV según el CP (cajas/mes; ya no el archivo de ventas)
-    CP_i   = ⌊PQF_i⌋ + 1[PQF_i − ⌊PQF_i⌋ ≥ 0.6]      potencial del CP (PotentialQuantitativeFinal_TotalPortafolio) en cajas
-                                                    enteras: hacia abajo si el decimal < 0.6 (config.CP_UMBRAL_REDONDEO)
-    W_i    = V_i + CP_i
-    C_i    = {j con venta : d(i, j) ≤ 300 m}        clúster de venta: PDV con venta en el buffer del PDV (incluye a i)
-    I^V_i  = 100 · W_i / media_{j ∈ C_i} W_j        índice de venta contra su clúster de venta (sin Rappi)
-    S_r    = botellas_r / meses de vida_r / b       venta de sueros e hidratación de la tienda Rappi activa r, en cajas/mes
-                                                    (b = config.RAPPI_BOTELLAS_CAJA)
-    D_r    = {j con venta : d(j, r) ≤ 300 m}        PDV que reciben la venta de r
-    R_i    = Σ_{r : i ∈ D_r} S_r / |D_r|            venta Rappi movida al PDV (partes iguales: la misma venta no se cuenta dos veces)
-    I^V*_i = 100 · (W_i + R_i) / media_{j ∈ C_i} (W_j + R_j)   índice con la venta Rappi movida (la media también lleva Rappi)
-    L2_i   = H si |C_i| ≥ 2 y I^V*_i > 100; si no L   (el PDV que es el único con venta en su buffer queda L)
+  Letra 2 (Ventas) — regla del usuario (2026-09-30): vector del PDV (venta, CP, Rappi) → rangos percentiles → score ponderado
+    V_i    = PotentialQuantitative_TotalPortafolio_i          venta media del PDV según el CP (cajas/mes)
+    CP_i   = PotentialQuantitativeFinal_TotalPortafolio_i     potencial del CP, con decimales (cajas/mes)
+    R_i    = Σ_{r ∈ B_i} venta_r / |B_i|                      Rappi: venta media (MXN/mes de sueros e hidratación) de las tiendas
+             B_i = {tiendas Rappi r : d(i, r) ≤ 300 m}         Rappi de su buffer; 0 si no hay ninguna
+    r^x_i  = pct_rank descendente de x en los PDV con venta (0 ≈ el que más vende, 1 = el que menos; empates con rango medio)
+    S_i    = (2·r^V_i + 2·r^CP_i + 1·r^R_i) / 5               score (config.LETRA2_PESOS; Rappi pesa la mitad)
+    L2_i   = H si S_i < 0.4 (config.LETRA2_CORTE), si no L;   el PDV sin venta es L y no entra al ranking
+  Sin unidades comunes: los rangos evitan convertir Rappi (pesos) a cajas. Letra 2 sin Rappi = misma regla con pesos (2, 2, 0).
 
-  La media del clúster de venta también se mueve con Rappi (usuario, 2026-09-30): cada PDV se compara con sus vecinos con la
-  misma vara (venta media + CP + Rappi), así que Rappi puede subir o bajar una letra.
-
-La media de la Letra 1 se toma sobre los PDV objetivo del subcanal (con venta y con hogares en su clúster NSE); un PDV sin venta
-recibe su Letra 1 contra esa misma media y no tiene Letra 2.
+La media de la Letra 1 se toma sobre los PDV objetivo del subcanal (con venta y con hogares en su clúster NSE).
 """
 import h3
 import numpy as np
 import pandas as pd
-from sklearn.neighbors import BallTree
 
 NIVELES = {"D/E": 1, "D+": 2, "C-": 3, "C": 4, "C+": 5, "A/B": 6}
 NOMBRE_NIVEL = {v: k for k, v in NIVELES.items()}
@@ -106,24 +96,6 @@ def redondeo_cp(x, umbral: float = 0.6):
     return piso + ((x - piso).round(9) >= umbral).astype(float).where(x.notna())    # round(9): 4.6 − 4 = 0.5999999999999996
 
 
-def mover_venta(venta, lat_o, lon_o, lat_d, lon_d, radio_m: float, destino):
-    """Mueve la venta de cada origen (p. ej. una tienda Rappi) a los destinos con `destino` = True a ≤ radio_m, en partes
-    iguales. Devuelve (venta recibida por cada destino, número de destinos de cada origen) como arreglos; la suma recibida es la
-    venta de los orígenes con al menos un destino (lo que no tiene destino no se mueve)."""
-    destino = np.asarray(destino, bool)
-    idx = np.flatnonzero(destino)
-    recibida = np.zeros(destino.size)
-    n = np.zeros(len(np.asarray(venta)), int)
-    if idx.size:
-        arbol = BallTree(np.radians(np.column_stack([np.asarray(lat_d, float)[idx], np.asarray(lon_d, float)[idx]])), metric="haversine")
-        vec = arbol.query_radius(np.radians(np.column_stack([np.asarray(lat_o, float), np.asarray(lon_o, float)])), r=radio_m / 6_371_000)
-        for k, (v, x) in enumerate(zip(np.asarray(venta, float), vec)):
-            n[k] = x.size
-            if x.size:
-                np.add.at(recibida, idx[x], v / x.size)
-    return recibida, n
-
-
 def centros(celdas):
     """Latitud y longitud del centro de cada celda H3 (el punto NSE de cada clúster)."""
     c = np.array([h3.cell_to_latlng(h) for h in celdas], float).reshape(-1, 2)
@@ -149,21 +121,14 @@ def mover_nse(N, N_alt, peso: float) -> pd.Series:
     return pd.Series(np.where(np.isnan(a), N.to_numpy(), (1 - peso) * N.to_numpy() + peso * a), index=N.index)
 
 
-def cluster_local(valor, grupo, lat, lon, radio_m: float, miembro):
-    """Clúster de cada punto: los puntos del mismo `grupo` (p. ej. canal) con `miembro` = True a ≤ radio_m, incluido él si es
-    miembro. Devuelve (tamaño del clúster, media de `valor` en el clúster) como arreglos."""
-    valor, grupo, miembro = np.asarray(valor, float), np.asarray(grupo, object), np.asarray(miembro, bool)
-    lat, lon = np.asarray(lat, float), np.asarray(lon, float)
-    n, media = np.zeros(valor.size, int), np.full(valor.size, np.nan)
-    for g in pd.unique(grupo):
-        m = (grupo == g) & miembro
-        if not m.any():
-            continue
-        arbol = BallTree(np.radians(np.column_stack([lat[m], lon[m]])), metric="haversine")
-        q = np.flatnonzero(grupo == g)
-        vec = arbol.query_radius(np.radians(np.column_stack([lat[q], lon[q]])), r=radio_m / 6_371_000)
-        v = valor[m]
-        for k, idx in zip(q, vec):
-            n[k] = idx.size
-            media[k] = v[idx].mean() if idx.size else np.nan
-    return n, media
+def rango_desc(x, universo) -> pd.Series:
+    """pct_rank descendente de `x` dentro de `universo` (booleana): 1/n para el mayor, 1 para el menor, empates con rango
+    medio. NaN fuera del universo."""
+    x = pd.Series(x, dtype=float)
+    return x.where(universo).rank(ascending=False, method="average", pct=True)
+
+
+def score_letra2(rangos: dict, pesos: dict) -> pd.Series:
+    """Score = Σ peso_k · rango_k / Σ peso_k (rangos descendentes: menor = mejor)."""
+    tot = sum(pesos.values())
+    return sum(pesos[k] * rangos[k] for k in pesos if pesos[k]) / tot

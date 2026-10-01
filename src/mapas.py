@@ -198,18 +198,17 @@ function seleccionar(ds, r) {
   const K = D.cluster, cid = K ? r[K.campo] : null, esCluster = !!K && ds === K.dataset;
   const notas = [];
   let donde = [r.lat, r.lon];
-  if (cid) {                    // clúster NSE: su hexágono, el buffer desde su centro y los PDV que lo comparten (azul)
+  if (cid) {                    // clúster NSE: su hexágono, su centro y los PDV que lo comparten (azul; el buffer de 300 m del NSE no se dibuja)
     const cc = h3.cellToLatLng(cid);
     if (esCluster) donde = cc;
     L.polygon(h3.cellToBoundary(cid), {renderer: lienzo, color: '#2a78d6', weight: 2.4, fill: false, interactive: false}).addTo(sel);
-    L.circle(cc, {renderer: lienzo, radius: D.radio, color: '#2a78d6', weight: 1.8, dashArray: '3 5', fill: false, interactive: false}).addTo(sel);
     L.circleMarker(cc, {renderer: lienzo, radius: 3, color: '#2a78d6', weight: 1, fillColor: '#2a78d6', fillOpacity: 1, interactive: false}).addTo(sel);
     const miembros = (DS[K.miembros] || []).filter(p => p[K.campo] === cid && visible(K.miembros, p));
     miembros.forEach(p => L.circleMarker([p.lat, p.lon], {renderer: lienzo, radius: 5, color: '#2a78d6', weight: 2.2, fill: false, interactive: false}).addTo(sel));
-    notas.push('Clúster NSE (azul): el hexágono y su buffer de ' + D.radio + ' m desde el centro (punto azul); ' + miembros.length +
+    notas.push('Clúster NSE (azul): el hexágono y su centro (punto azul); ' + miembros.length +
                ' PDV del hexágono comparten su NSE (Letra 1).');
   }
-  if (!esCluster) {             // buffer del PDV: su clúster de venta (negro) y las tiendas Rappi (rojo)
+  if (!esCluster) {             // buffer del PDV: PDV con venta (negro) y las tiendas Rappi (rojo) que dan su variable Rappi
     L.circle([r.lat, r.lon], {renderer: lienzo, radius: D.radio, color: '#0a0a0a', weight: 2, dashArray: '6 4', fill: false, interactive: false}).addTo(sel);
     const dentro = (DS.bepensa || DS.pdv || []).filter(p => p.id !== r.id && dist(p, r) <= D.radio);   // PDV con venta
     const mismo = r.canal === undefined ? dentro : dentro.filter(p => p.canal === r.canal);          // su clúster: mismo canal
@@ -219,8 +218,8 @@ function seleccionar(ds, r) {
     otros.forEach(p => L.circleMarker([p.lat, p.lon], {renderer: lienzo, radius: 7, color: '#898781', weight: 1.2, dashArray: '2 2', fill: false, interactive: false}).addTo(sel));
     rap.forEach(p => L.circleMarker([p.lat, p.lon], {renderer: lienzo, radius: 10, color: '#e34948', weight: 2, fill: false, interactive: false}).addTo(sel));
     notas.push('Buffer de ' + D.radio + ' m del punto (negro, sin contarlo): ' + mismo.length + ' PDV con venta ' +
-      (r.canal === undefined ? '(su clúster de venta, Letra 2)' : 'de su canal (negro, su clúster) y ' + otros.length + ' del otro canal (gris, no cuentan)') +
-      ' · ' + rap.length + ' tiendas Rappi (rojo)' + (rap.length ? ': ' + rap.slice(0, 5).map(p => p.nombre + (p.activa ? ' (activa)' : ' (esporádica)')).join(', ') : ''));
+      (r.canal === undefined ? '(negro, referencia)' : 'de su canal (negro, su clúster) y ' + otros.length + ' del otro canal (gris, no cuentan)') +
+      ' · ' + rap.length + ' tiendas Rappi (rojo; su venta media es el Rappi del PDV)' + (rap.length ? ': ' + rap.slice(0, 5).map(p => p.nombre + (p.activa ? ' (activa)' : ' (esporádica)')).join(', ') : ''));
   }
   let t = '<table class="ficha">' + (D.popup[ds] || []).map(([e, k]) => '<tr><td>' + e + '</td><td><b>' + fmt(r[k]) + '</b></td></tr>').join('') + '</table>';
   const dp = (D.dist_popup || {})[ds];

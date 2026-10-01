@@ -520,7 +520,7 @@ senales = pd.DataFrame([
     ("estado_actividad / recencia", "USAR", f"{(pdv.recencia_meses > 0).mean():.0%} no compró en el último mes; S(12 m) = {hitos.loc[12]:.2f}"),
     ("tasa_actividad", "USAR", "regularidad de compra (meses activos / meses de vida)"),
     ("cajas_mes_activo (= avg_monthly_boxes)", "USAR CON CUIDADO", "sesgado al alza en PDV intermitentes o inactivos"),
-    ("PotentialQuantitative_*", "NO USAR · fuga", f"es la venta mensual actual: |dif. relativa| mediana {rel.median():.4f}"),
+    ("PotentialQuantitative_*", "NO USAR para modelar · fuga", f"es la venta mensual actual (|dif. relativa| mediana {rel.median():.4f}); en el 06 es la venta media del PDV (decisión del usuario, 2026-09-30)"),
     ("PotentialQuantitativeFinal_*", "USAR · clasificar (potencial futuro, no decisivo)", f"Quantitative × EstimatedToCover; {rho('PotentialQuantitativeFinal_TotalPortafolio')}; dentro de subcanal {rng_estr('PotentialQuantitativeFinal_TotalPortafolio')}"),
     ("PotentialEstimatedToCover_*", "USAR", f"brecha vs PDV comparable; {rho('PotentialEstimatedToCover_TotalPortafolio')}"),
     ("PotentialRange / PotentialQualitative", "USAR · clase de potencial futuro (clasificación), leer junto al tamaño",

@@ -70,6 +70,15 @@ y `.xlsx`. Los Excel de análisis y QA (00-04, 06) quedan en `outputs/<ciudad>/<
 QA: `python .claude/skills/golden-stores-kin/scripts/qa_deck.py <deck.pptx> [carpeta]` y **mirar cada lámina**; validar el
 pptx con la skill pptx; recalcular el Excel con LibreOffice y confirmar que el Resumen coincide con el notebook.
 
+**Presentación en Claude Design (obligatorio, usuario 2026-10-01).** La versión para presentar se crea o actualiza como artifact
+del tipo **Slides** (`Artifact` → `quickstart` con `intent: "slides"`) con el design system **Kin Design System - Kin Official**
+(instalarlo en el deck: `tokens.json`, fuentes `fonts/*.ttf` y logos PNG de `templates/kin-presentation/assets/`; los SVG no se
+copian). Mismo contenido, cifras y notas que el pptx; tablas largas se parten en dos láminas; gráficas como barras HTML editables.
+Sin signo `$`, sin "Let knowledge in", pie `kinanalytics.com` en minúsculas.
+**Un bottler o ciudad nuevos = artifacts nuevos** (trazabilidad): crear dos decks ("Golden Stores · <canal> · <BOTTLER> <Ciudad>" y
+"Letras por PDV · <BOTTLER> <Ciudad>") y registrar sus URLs en la tabla del CLAUDE.md ("Para empezar"); los decks de otros bottlers o
+ciudades no se modifican. Si es el mismo bottler y ciudad, se actualizan sus decks registrados (misma URL).
+
 ## Decisiones que NO asumas: pregúntalas
 
 - **Canal target** del deck (`CANALES_DECK` en el 05). Bepensa: Tradicional.

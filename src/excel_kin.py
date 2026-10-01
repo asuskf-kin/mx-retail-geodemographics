@@ -67,7 +67,7 @@ def portada(wb, titulo, subtitulo, filas_info, indice):
         c.font = Font(name=F, size=10, bold=True, color=NEGRO, underline="single")
         ws.cell(r, 3, que).font = Font(name=F, size=10, color=GRIS)
     r += 2
-    ws.cell(r, 2, "Let knowledge in. · KinAnalytics.com · CONFIDENCIAL").font = Font(name=F, size=8, color=GRIS_MEDIO)
+    ws.cell(r, 2, "Kin Analytics · kinanalytics.com · CONFIDENCIAL").font = Font(name=F, size=8, color=GRIS_MEDIO)
     return ws
 
 

@@ -1,6 +1,6 @@
 """Rappi (panel nacional de venta en línea): lectura, etiquetas de ciudad, clasificación de sueros e hidratación y tiendas físicas.
 
-Lo usan el notebook 00c (EDA y selección) y el 06 (Rappi mueve su venta a los PDV de la Letra 2). Reglas (decisión del usuario): el
+Lo usan el notebook 00c (EDA y selección) y el 06 (Letra 2: el Rappi de cada PDV es la venta media de las tiendas Rappi de su buffer de 300 m). Reglas (decisión del usuario): el
 proyecto es **sueros e hidratación** de la ZM activa; si una línea viene con otros productos, lo que importa es que tenga
 **sueros o sus derivados**. La ZM se define por polígono municipal del Marco Geoestadístico; la etiqueta `city` solo se verifica.
 
@@ -87,15 +87,6 @@ def tiendas_fisicas(lat, lon, radio_m=25) -> np.ndarray:
     filas = np.repeat(np.arange(len(vec)), [len(v) for v in vec])
     G = csr_matrix((np.ones(filas.size), (filas, np.concatenate(vec))), shape=(len(X), len(X)))
     return connected_components(G, directed=False)[1]
-
-
-def botellas(lineas: pd.DataFrame, precio_max=150) -> pd.Series:
-    """Botellas de cada línea: sus unidades; en un empaque múltiple (precio por unidad > `precio_max` MXN; un suero o isotónico
-    individual cuesta 20-50), el importe entre el precio mediano de una botella de su subcategoría."""
-    multi = lineas.beverage_sales / lineas.beverage_units > precio_max
-    precio = (lineas.beverage_sales / lineas.beverage_units)[~multi].groupby(lineas.subcategoria[~multi]).median()
-    precio_linea = lineas.subcategoria.map(precio).fillna(precio.median())
-    return pd.Series(np.where(multi, lineas.beverage_sales / precio_linea, lineas.beverage_units), index=lineas.index)
 
 
 def en_radio(lat_a, lon_a, lat_b, lon_b, radio_m) -> list:

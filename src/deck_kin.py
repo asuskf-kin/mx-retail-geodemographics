@@ -6,7 +6,7 @@ Estilo tomado del deck de referencia de Kin ("Customer Potential Model", 2026):
 - Etiqueta (kicker) gris en mayúsculas arriba del título; título negro en negrita; subtítulo gris.
 - Tarjetas gris claro (F4F4F4) o negras; números grandes para cifras clave; tablas con encabezado negro.
 - Mensaje clave en barra negra con texto lima (o lima con texto negro). Acento único: lima E5FF01.
-- Pie: "Kin Analytics®" · "Let knowledge in." · "KinAnalytics.com" sobre franja gris clara.
+- Pie: "Kin Analytics®" a la izquierda y "kinanalytics.com" (minúsculas) a la derecha sobre franja gris clara; sin tagline.
 Fuentes de marca: Albert Sans (texto) y Space Grotesk (títulos). No están instaladas en todas las máquinas y
 PowerPoint las sustituye; por defecto se usa Arial (FUENTE_*). Cambiar aquí si el equipo las tiene.
 """
@@ -105,8 +105,7 @@ def _pie(slide, oscuro=False):
         caja(slide, 0, y, ANCHO, 0.32, relleno=FONDO_CARD, forma=MSO_SHAPE.RECTANGLE)
     col, col2 = (BLANCO, GRIS_MEDIO) if oscuro else (NEGRO, GRIS_MEDIO)
     texto(slide, MARGEN, y + 0.09, 1.3, 0.16, "Kin Analytics®", tam=8.5, color=col, negrita=True, fuente=FUENTE_TITULO)
-    texto(slide, MARGEN + 1.25, y + 0.1, 2.0, 0.14, "Let knowledge in.", tam=6.5, color=col2)
-    texto(slide, ANCHO - MARGEN - 1.6, y + 0.1, 1.6, 0.14, "KinAnalytics.com", tam=6.5, color=col2, alinear=PP_ALIGN.RIGHT)
+    texto(slide, ANCHO - MARGEN - 1.6, y + 0.1, 1.6, 0.14, "kinanalytics.com", tam=6.5, color=col2, alinear=PP_ALIGN.RIGHT)
 
 
 def portada(prs, titulo, subtitulo, bajada="", fecha_cliente="", confidencial=True):
@@ -293,11 +292,11 @@ def barras(slide, x, y, w, h, categorias, series: dict, titulo="", horizontal=Tr
     return graf
 
 
-def cierre(prs, frase="Let knowledge in.", contacto=""):
+def cierre(prs, frase="Gracias", contacto=""):
     s = _vacia(prs, NEGRO)
     _corte_lima(s)
     texto(s, MARGEN, 1.9, 9, 0.8, frase, tam=40, color=BLANCO, negrita=True, fuente=FUENTE_TITULO)
-    texto(s, MARGEN, 2.8, 9, 0.3, "KinAnalytics.com", tam=14, color=LIMA, fuente=FUENTE_TITULO)
+    texto(s, MARGEN, 2.8, 9, 0.3, "kinanalytics.com", tam=14, color=LIMA, fuente=FUENTE_TITULO)
     if contacto:
         texto(s, MARGEN, 3.3, 9, 0.3, contacto, tam=9, color=GRIS_MEDIO)
     texto(s, ANCHO - 3.0, ALTO - 0.72, 2.6, 0.45, "Kin Analytics®", tam=22, color=BLANCO, fuente=FUENTE_TITULO, alinear=PP_ALIGN.RIGHT)

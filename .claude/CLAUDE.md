@@ -7,6 +7,47 @@ Separa los canales **Moderno** (cadenas) y **Tradicional** (abarrotes e independ
 
 Para replicarlo en otra ciudad usa la skill `/nse-tiendas-mx` (en `.claude/skills/nse-tiendas-mx/`).
 
+## Para empezar (persona o sesión nueva) — estado al 2026-10-01
+**Reglas de trabajo** (pedidas por el usuario; antes vivían solo en la memoria local de una sesión):
+1. **Solo ZM Mérida.** Es la única ciudad con datos del cliente; no re-correr Guadalajara ni otras al cambiar código o fuentes.
+2. **Sin datos del cliente no se avanza:** el 05 necesita ventas + CP en `data/raw/merida/bepensa/{ventas,cp}`; el 06 solo el CP (trae la
+   venta). Si faltan, detenerse y pedirlos (no están en git). Rappi (`data/raw/rappi/rappi.csv`) y AltScore (`enrichedgeodata/`) tampoco.
+3. **Al cambiar una regla se actualiza todo:** notebook `_src` → CLAUDE.md (decisiones y cifras de referencia) → flujograma
+   (`docs/flujo_pipeline.dataflow.json`, skill archify: `deliver` + `visual-check`) → entregables de `cliente/` y mapa HTML → flujo completo
+   (`uv run python src/correr.py --pasos 00,00b,00c,01,02,03,04,05,06 merida`, ≈ 7 min) → **presentaciones en Claude Design**.
+4. **Presentaciones = Claude Design** (usuario, 2026-10-01): toda presentación nueva o actualizada se hace como artifact del tipo
+   **Slides** con el design system **"Kin Design System - Kin Official"** (default de la organización; Space Grotesk + Albert Sans, logos
+   PNG de `templates/kin-presentation/assets/`; los SVG no se pueden copiar entre artifacts). Guarda versiones solas. El pptx de
+   `src/deck_kin.py` se sigue generando en `cliente/`, pero la versión para presentar es la de Claude Design.
+   **Un bottler o ciudad nuevos = artifacts nuevos** (usuario, 2026-10-01, por trazabilidad): se crean dos decks nuevos, titulados
+   "Golden Stores · <canal> · <BOTTLER> <Ciudad>" y "Letras por PDV · <BOTTLER> <Ciudad>"; los de otro bottler o ciudad **no se tocan**
+   (cada artifact guarda su propio historial de versiones). Un cambio de cifras o reglas del mismo bottler y ciudad actualiza sus decks
+   (misma URL). Al crear uno, registrar su URL aquí:
+
+   | Bottler · ciudad | Golden Stores (05) | Letras (06) |
+   |---|---|---|
+   | Bepensa · ZM Mérida | https://claude.ai/artifact/W5dGqa18ux9yws1UriJkzx | https://claude.ai/artifact/JGHg6YqT9oYVr5BJ5Vx2fn |
+
+   Se escriben a mano con las cifras de los notebooks ejecutados (no se generan solos): si cambian las cifras, actualizar sus láminas.
+   Figuras: recortar los PNG de `notebooks/ejecutados/merida/06_*.ipynb` y subirlos como asset del artifact.
+5. **Estilo:** sin el signo **$** en presentaciones (Rappi va en pedidos/mes); nunca la frase "Let knowledge in"; URL `kinanalytics.com`
+   en minúsculas; en el Excel ninguna celda queda vacía sin motivo ("no aplica · sin venta", "sin NSE (sin hogares a 300 m)", …);
+   "la venta es la media" (no "promedio"); no inventar cifras ni fuentes.
+6. Commits solo cuando el usuario lo pide.
+
+**Pendientes de decisión del usuario** (no cambiar sin preguntar):
+- Letra 2: el PDV sin Rappi a 300 m (88%) empata en el rango medio (0.56) y por eso Rappi baja 204 letras y sube 83; cualquier Rappi
+  queda en el 12% de arriba. Opciones: rango neutro o score solo con venta y CP para quien no tiene Rappi.
+- AltScore: índice débil (α 0.47, 2 proxies) que mueve 447 Letras 1 con λ = 0.25.
+- Tiendas Rappi: hoy entran todas (221); el 00c dice que pasan las activas (106). Con solo activas cambian 91 Letras 2.
+- Índice del 04/05 vs ZM: la referencia es la ZM 2020 urbana (`nse_ageb`), pero los hogares son 2025 con rurales (A/B ≈ 94, D/E ≈ 107
+  para una zona con la mezcla media). Validar Nielsen (1.ª letra en sueros) cuando el usuario comparta esas tiendas.
+- Share y prioridad P1–P4 (omitidos hasta que el usuario dé la fuente del share).
+
+**Problemas conocidos** (revisión del 2026-10-01; todo lo demás cuadra con las cifras de abajo): el DENUE vigente queda fijo en la copia
+local (no avisa cuando salga la 11_2026, el 2026-11-25); el factor EIC 2020→2025 es parejo dentro de cada municipio; 110 hogares rurales
+sin geometría quedan fuera del 04 (0.03%); el 03 sigue con centroides de manzana (352,851 hogares) y sin rurales ni EIC.
+
 ## Estructura
 ```
 src/config.py        ← ÚNICO lugar a editar: un bloque por ciudad en CIUDADES; la activa en CIUDAD (o env var CIUDAD)
@@ -20,7 +61,7 @@ src/altscore.py      señales AltScore del cliente: carga (geohex_geodig.parquet
                      e índice NSE AltScore (PC1 de los proxies que forman escala en la ZM, `seleccionar_proxies`)
 src/rappi.py         Rappi: etiquetas de ciudad, regla "sueros primero" (subcategoría → marca → nombre → categoría), tiendas físicas
 src/letras.py        fórmulas del 06: Letra 1 (NSE del clúster H3 res 9 + 300 m; `a_escala` y `mover_nse`: AltScore mueve el NSE) y
-                     Letra 2 (venta + CP + venta Rappi movida, `mover_venta`), `centros` y áreas H3
+                     Letra 2 (`rango_desc` y `score_letra2`: rangos de venta, CP y Rappi), `centros` y áreas H3
 src/mapas.py         mapas de QA: fondo estático (matplotlib) y mapa HTML interactivo (Leaflet + h3-js; fondo OpenFreeMap con datos OSM, filtro,
                      capas hex de varias fuentes y selección del clúster NSE)
 src/deck_kin.py      estilo Kin para presentaciones (python-pptx) · src/excel_kin.py formato Kin para entregables Excel (00b-06)
@@ -45,7 +86,8 @@ pyproject.toml · uv.lock · .python-version   proyecto uv (Python 3.14, entorno
 
 ## Cómo correr
 ```bash
-uv sync                                      # crea/actualiza .venv con uv.lock (una vez por máquina)
+uv sync                                      # crea/actualiza .venv con uv.lock (una vez por máquina; uv.lock va en git)
+uv run python -m ipykernel install --user --name mx-retail-geodemographics --display-name "Python (mx-retail-geodemographics · uv .venv)"
 uv run python src/correr.py merida guadalajara     # regenera los .ipynb desde _src y corre 01 → 02 → 03 por ciudad
 uv run python src/correr.py --pasos 00,00b,00c,01,02,03,04,05,06 merida   # Bepensa completo (≈ 5 min en paralelo)
 ```
@@ -104,7 +146,7 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
 - Llave: empata 73.3% de los registros de ventas (azar 3.7%); en prefijos de la ZM quedan sin ubicar 30.9% de las cajas (pocas cuentas grandes).
 - 7,455 PDV del CP en la ZM, 5,978 con venta. Mediana 2.07 cajas/mes de vida; Gini 0.58; KM S(12 m) = 0.86.
 - 04: hogares por **área de manzana** (no centroide) + rurales, actualizados a 2025: 403,069 hogares. Mediana 18 hexágonos por área (≈ 0.27 km²);
-  53 PDV sin hogares a ≤ 300 m (con centroides eran 576). Moran I = 0.058 (p = 0.005); 75 asociaciones robustas de 82.
+  53 PDV sin hogares a ≤ 300 m (con centroides eran 576). Moran I = 0.058 (p = 0.005); 83 asociaciones robustas de 90 (entran las señales AltScore).
   AltScore por buffer (media de los puntos AltScore a ≤ 300 m del PDV): 94% de los PDV con índice (mediana 25 puntos); vs % A/B + C+
   INEGI del mismo buffer: ρ = +0.47 (IC bloques +0.34 a +0.57, 6,820 PDV).
 - 00b AltScore (`enrichedgeodata/geohex_geodig.parquet`, exportación del 2026-09-30): 91,677 filas de la península con `location.lat/lng`
@@ -127,7 +169,7 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
 - 555 store_id → 221 tiendas físicas (≤ 25 m); 106 activas (≥ 12 pedidos, 94% de la venta), 72 activas en sueros; 2 Turbo = 33% de la venta.
   Duplicados exactos: Coca-Cola 0.9% (base) vs competidores 19.4% (anonimizados a nivel marca): se conservan.
 
-### Letras (notebook 06: canal Tradicional y solo datos del CP; reglas del usuario del 2026-09-30, pendiente validar λ, botellas por caja y θ)
+### Letras (notebook 06: canal Tradicional y solo datos del CP; reglas del usuario del 2026-09-30, pendiente validar λ)
 - CP en la ZM: 7,455 PDV → se quitan 418 Moderno (Modelorama 148, farmacias de cadena…) → 7,037 Tradicional; 5,607 con venta según el CP
   (venta media > 0); **5,566 objetivo** (con venta y hogares en su clúster NSE).
 - Clúster NSE (H3 res 9 + buffer de 300 m desde el centro): 2,004 clústeres con PDV objetivo, mediana 2 PDV (p90 5, máx. 29), 31% con un
@@ -139,14 +181,14 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
   directa. λ = 0.25 → cambia 447 Letras 1 (299 ↑, 148 ↓; 8%); λ = 0.5 → 974; λ = 1 → 1,827 (κ con el Censo 0.76 · 0.62 · 0.32).
 - Letra 1 = H en 48% (sin AltScore 46%); confirmada por el Censo en 88% (solo INEGI 91%); κ de la letra INEGI con ABC+ 0.93, Censo 0.83,
   buffer del propio PDV 0.95, buffers de 200/400 m 0.96/0.97, AltScore solo 0.26, hogares (sin NSE) 0.22.
-- Letra 2 (venta media + CP del CP contra los PDV con venta de su buffer): H en 37.5%; 132 (2%) solos → L; sin el CP cambiaría 5%, sin
-  redondearlo 2%. Venta del CP mediana 2.58 cajas/mes; CP en cajas enteras: 79% queda en 0.
-- Rappi mueve su venta (12 botellas por caja): 203 cajas/mes de 106 tiendas activas; se mueven 163 (81%; 27 tiendas sin PDV Tradicional
-  con venta a ≤ 300 m) a 291 PDV objetivo (5.2%): mediana 0.09 cajas/mes, máx. 36.4 (Turbo San Ramón, a un solo PDV); 0.7% de la venta
-  + CP. Cambian 14 letras (7 ↑, 7 ↓); 6 / 12 / 24 botellas → 16 / 14 / 6 cambios; media sin Rappi: 13 ↑ 0 ↓; sin repartir: 20 ↑ 12 ↓.
-  Venta con vs sin Rappi: δ = +0.01 en total; farmacias +0.47 (IC excluye 0).
-- Letras finales: HH 1,034 (19% de tiendas, 31% de la venta, índice 167) · HL 1,655 · LH 1,056 (35%) · LL 1,821; 92% igual a las letras
-  base (solo INEGI + CP). Mapa QA: 6,984 PDV y 2,175 clústeres (4.6 MB); Excel de 62 columnas y 15 hojas; deck de 14 láminas.
+- Letra 2 = score de rangos (usuario, 2026-09-30): H en 29.4% de los objetivo (sin Rappi 31.6%). Venta del CP mediana 2.58 cajas/mes;
+  CP con decimales mediana 0.17, 19% en 0 (redondeado quedaba 79%); ρ(venta, CP) = +0.22. Rappi del buffer: 221 tiendas (106 activas),
+  643 PDV objetivo (11.6%) con alguna a ≤ 300 m; el 88% sin Rappi empata en el rango 0.56. Rappi cambia 287 letras (83 ↑, **204 ↓**: el
+  rango medio de "sin Rappi" baja a quien estaba cerca del corte). Misma letra: sin CP 81%, CP redondeado 88%, pesos 1·1·1 95%, corte
+  0.35 / 0.45 93%, solo tiendas activas 98%, suma en vez de media 100%, empates en el peor rango 91%. Venta con vs sin Rappi: δ = −0.01.
+- Letras finales: HH 815 (15% de tiendas, 24% de la venta, índice 161) · HL 1,874 · LH 824 (25%) · LL 2,053; 87% igual a las letras
+  base (solo INEGI + CP). Los 1,418 PDV sin venta con NSE quedan L en la Letra 2. Excel de 16 hojas (con "Vector Letra 2"); deck de 14 láminas;
+  tabla intermedia en `data/processed/merida/bepensa/letra2_vector_bepensa_zm_merida.parquet`.
 
 ### Guadalajara (10 municipios Metrópolis 2020, región Pacífico, ENIGH 01·06·14·16·18)
 - **Sin datos de cliente: el trabajo con Bepensa es solo Mérida.** Estas cifras son de la corrida con MG 2025 y sin rurales ni Intercensal;
@@ -172,12 +214,12 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
 - Llave ventas ↔ CP **inferida**: `pos_id` de ventas = prefijo de 4 dígitos (centro de distribución) + `pos_id` del CP a 6 dígitos (pendiente de confirmar con Bepensa).
 - Señales del CP: `PotentialQuantitative` y `size_class` son fuga (derivan de la venta); el potencial útil es `PotentialQuantitativeFinal`.
   **En el 06 (usuario, 2026-09-30) la venta SALE DEL CP:** `PotentialQuantitative_TotalPortafolio` es la venta media (ya no se usa el
-  archivo de ventas en las letras) y el CP es `PotentialQuantitativeFinal_TotalPortafolio` en **cajas enteras: hacia abajo si el decimal
-  es menor a 0.6** (`CP_UMBRAL_REDONDEO`, `letras.redondeo_cp`). El 06 ya no usa el archivo de ventas en nada, ni para el QA
+  archivo de ventas en las letras) y el CP es `PotentialQuantitativeFinal_TotalPortafolio` **con decimales** (usuario, 2026-09-30: "0.6
+  cajas son más de 10 unidades"; el redondeo `CP_UMBRAL_REDONDEO` solo queda en el QA). El 06 ya no usa el archivo de ventas en nada, ni para el QA
   (usuario: "usa solo datos de cp"); el 05 sí lo usa.
 - **El CP es potencial futuro: variable de clasificación (clase Very High → Low), no decisiva** en el 05. Ojo: la clase mide potencial
   ABSOLUTO (venta actual × brecha): Very High = 0% en la mitad inferior de venta. La brecha relativa (`PotentialEstimatedToCover`) va en el Excel.
-  **Excepción decidida por el usuario (2026-09-30): en la Letra 2 del 06 el potencial (`PotentialQuantitativeFinal`) se SUMA a la venta media.**
+  **Excepción decidida por el usuario (2026-09-30): en la Letra 2 del 06 el potencial (`PotentialQuantitativeFinal`) entra al score con peso 2.**
 - **Los hogares ocupan toda la manzana**: se reparten por área entre hexágonos (no por centroide) y entran las localidades rurales;
   las manzanas del Censo sin polígono se reparten sobre su AGEB. Nada queda fuera del área por usar un punto.
 - **QA metodológico del 05 (no quitar):** la brecha HL vs HH es por construcción (no se presenta como oportunidad); en HL se reporta
@@ -202,21 +244,24 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
   **Letra 1 = NSE del clúster NSE:** hexágono H3 res 9 (`NSE_CLUSTER_RES`; "mejor hexágonos que centroides de AGEB, más simple en
   geografías complejas"); su centro es el punto NSE y el buffer de 300 m desde el centro da los hogares; **todos los PDV del hexágono
   comparten su NSE** ("Solo la Letra 1 del clúster"); AltScore lo mueve (ver AltScore); índice 100 por subcanal del CP. **Letra 2** (del
-  PDV): venta media + CP (los dos del CP) contra la **media de los PDV con venta de su buffer de 300 m** (clúster de venta); H si es mayor;
-  **el único con venta en su buffer queda L**. **Rappi premia a la locación moviendo su venta** (NO puntos fijos): la venta de sueros e
-  hidratación de cada tienda Rappi activa se pasa a cajas (`RAPPI_BOTELLAS_CAJA` = 12, a confirmar con Bepensa; empaques múltiples por
-  precio) y se reparte en partes iguales entre los PDV con venta a ≤ 300 m, que la suman a su venta + CP; **la media del buffer también se
-  mueve con Rappi**, así que Rappi sube o baja letras. **"La venta es la media"** (usuario): en los entregables se dice "media", no
-  "promedio". Fórmulas en `src/letras.py`. **QA con mapa en cada paso** (estático en el notebook + HTML interactivo). Pendiente: λ de
-  AltScore, botellas por caja, θ y si el 05 usa estas letras.
+  PDV, regla del usuario del 2026-09-30): **tabla intermedia con el vector** `pos_id, venta media, CP, Rappi`, con **Rappi = suma de los pedidos/mes
+  de sueros e isotónicos de las tiendas Rappi del buffer de 300 m del PDV ÷ número de tiendas** (todas las tiendas físicas; 0 si no hay;
+  **pedidos, no pesos**: usuario, 2026-10-01). En las presentaciones **no se usa el signo $** (usuario, 2026-10-01). Cada variable
+  pasa a su **pct_rank descendente** entre los PDV Tradicional **con venta** (0 = el que más vende; empates con rango medio) y el **score**
+  = media ponderada con **pesos venta 2 · CP 2 · Rappi 1** (`LETRA2_PESOS`); **H si score < 0.4** (`LETRA2_CORTE`), si no L. **El PDV
+  sin venta es L** y no entra al ranking. Ya no hay media del buffer, ni "solo en su buffer → L", ni venta Rappi movida, ni botellas por
+  caja (los rangos quitan las unidades; `RAPPI_BOTELLAS_CAJA` se eliminó). **"La venta es la media"** (usuario): en los entregables se dice
+  "media", no "promedio". Fórmulas en `src/letras.py`. **QA con mapa en cada paso** (estático en el notebook + HTML interactivo; el radio
+  azul del clúster NSE ya no se dibuja en el mapa: "no aporta"). Pendiente: λ de AltScore, si entran solo tiendas Rappi activas, cómo
+  tratar el empate de "sin Rappi" y si el 05 usa estas letras.
 - **Clústeres (usuario, 2026-09-30):** el punto NSE es un clúster y su radio es un buffer; hoy hay dos: el **clúster NSE** (hexágono H3
-  res 9 + buffer de 300 m desde su centro; da la Letra 1 a todos sus PDV) y el **clúster de venta** (buffer de 300 m de cada PDV; su
-  Letra 2). **HH/HL/LH/LL no se llaman "clúster"** en el 06 (son letras) y **conservan su acción Golden Stores** (no quitarla).
+  res 9 + buffer de 300 m desde su centro; da la Letra 1 a todos sus PDV) y el **buffer de 300 m de cada PDV** (de ahí sale su Rappi
+  para la Letra 2). **HH/HL/LH/LL no se llaman "clúster"** en el 06 (son letras) y **conservan su acción Golden Stores** (no quitarla).
 - **Share y prioridad: omitidos por ahora** (usuario, 2026-09-30). Su tabla: Prioridad = Letra 1 × Share (la Letra 2 no la cambia):
   P1 = NSE alto + share bajo (la prioridad) · P2 = NSE alto + share alto · P3 = NSE bajo + share bajo · P4 = NSE bajo + share alto.
   El share aún no se calcula: no inventar fuente ni corte; se agrega cuando el usuario lo pida.
 - **Entregable de letras (formato del usuario, 2026-09-30):** un solo Excel del canal Tradicional: `pos_id | AltScore (índice + señales)
-  | datos gubernamentales (INEGI) | ventas (venta media, CP, Rappi, media del clúster de venta) | clúster (NSE y de venta) | letra 1 |
+  | datos gubernamentales (INEGI) | ventas (venta media, CP, Rappi del buffer, rangos y score) | clúster NSE | letra 1 |
   letra 2` (+ Letra 1 sin y con AltScore, Letra 2 sin y con Rappi con "… cambia la letra", letras base y finales, % bajo / medio / alto y
   la acción Golden Stores), con una **3.ª fila de encabezado con la fuente** de cada columna y hojas Fuentes, Fórmulas, Clústeres NSE y
   sensibilidades; lo mismo en su presentación (estilo Kin, pitch; láminas de clústeres y de AltScore con ejemplos reales). Ambos en `cliente/`.
@@ -228,6 +273,6 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
   La selección del mapa se dibuja en el MISMO lienzo (`renderer: lienzo`): un 2.º canvas encima tapaba los clics y no dejaba elegir otro
   punto (bug corregido 2026-09-30). Tooltips de AGEB y hexágono y ficha del PDV con **barra bajo / medio / alto** (`distribucion` en la
   capa y `distribucion_popup` en `mapas.mapa_html`; colores `mapas.COLOR_NSE3`). Capas `cl_*` con los hexágonos del clúster NSE
-  (`hexagonos={fuente: df}`) y `cluster=` en `mapas.mapa_html`: clic en un hexágono o en un PDV dibuja el hexágono, su buffer desde el
-  centro y los PDV que lo comparten (azul) y, en un PDV, su buffer con los PDV con venta (negro). Probado en Chrome sin interfaz
+  (`hexagonos={fuente: df}`) y `cluster=` en `mapas.mapa_html`: clic en un hexágono o en un PDV dibuja el hexágono, su centro y los PDV
+  que lo comparten (azul; el buffer azul ya no se dibuja: "no aporta", usuario 2026-10-01) y, en un PDV, su buffer de 300 m con los PDV con venta (negro) y las tiendas Rappi que dan su Rappi (rojo). Probado en Chrome sin interfaz
   (sin errores JS; pasos, clic en clúster y en PDV, filtro).

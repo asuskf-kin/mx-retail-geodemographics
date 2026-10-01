@@ -444,7 +444,7 @@ def deck(canal, b, pan, pct, indice, sem):
     s, y = K.lamina(prs, f"El {hh_['% tiendas']:.0f}% de las tiendas HH hacen el {hh_['% mix ventas']:.0f}% de las ventas de sueros en {canal}.",
                     "Panorama general",
                     notas=f"Lámina central de Golden Stores. HH: {hh_.tiendas:,.0f} tiendas, {hh_['% mix ventas']:.0f}% de la venta, índice {hh_['Index ventas']:.0f}. "
-                          f"LH es el segundo clúster en venta ({lh_['% mix ventas']:.0f}%).")
+                          f"LH hace el {lh_['% mix ventas']:.0f}% de la venta (" + ("la letra con más venta" if lh_['% mix ventas'] > hh_['% mix ventas'] else "segunda en venta") + ").")
     K.caja(s, K.MARGEN + 2.5, y - 0.05, 4.1, 0.3, relleno=K.NEGRO, redondeo=0.2)
     K.texto(s, K.MARGEN + 2.5, y + 0.02, 4.1, 0.18, f"Target: sueros · {n:,} tiendas", tam=9, negrita=True, color=K.LIMA, alinear=K.PP_ALIGN.CENTER)
     for q, (cx, cy) in {"HL": (0, 0), "HH": (1, 0), "LL": (0, 1), "LH": (1, 1)}.items():
@@ -636,7 +636,7 @@ def deck(canal, b, pan, pct, indice, sem):
     for i, (qq, rsp) in enumerate(objeciones):
         K.tarjeta(s, K.MARGEN, y + 0.02 + i * 0.86, 9.1, 0.78, qq, rsp, oscura=(i == 0), compacta=True)
 
-    K.notas(K.cierre(prs, "Let knowledge in.", f"Kin Analytics · Golden Stores · Sueros · Canal {canal} · Bepensa"), "Cierre.")
+    K.notas(K.cierre(prs, "Gracias", f"Kin Analytics · Golden Stores · Sueros · Canal {canal} · Bepensa"), "Cierre.")
     guion = [("Elevator hook (60 s)", [prs.slides[1].notes_slide.notes_text_frame.text.replace("GUION 60 s: ", "")]),
              ("Objeciones críticas (pre-mortem)", [f"{qq} → {rsp}" for qq, rsp in objeciones]),
              ("Riesgos y mitigación", [f"{r[0]}: {r[1]} Mitigación: {r[2]}" for r in riesgos]),

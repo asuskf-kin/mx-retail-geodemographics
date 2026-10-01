@@ -9,3 +9,4 @@ __pycache__/
 outputs/**/*.html
 .venv/
 *.lock
+!uv.lock

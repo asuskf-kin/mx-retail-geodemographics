@@ -3,8 +3,8 @@
 #
 # **Papel en el flujo:** Rappi es una fuente **externa** de venta de sueros e hidratación (no es del cliente). Aquí se hace
 # el EDA con los mismos pasos del 00 y del 00b (método retail-math-eda) y se deja, por **tienda física**, la venta que el
-# notebook 06 usa en la **Letra 2**: Rappi premia a la locación **moviendo su venta** (la venta de cada tienda activa, en
-# cajas, se reparte entre los PDV de Bepensa con venta a ≤ 300 m y se suma a la suya).
+# notebook 06 usa en la **Letra 2**: el Rappi de cada PDV es la venta media de las tiendas Rappi de su buffer de 300 m, que
+# entra al score de rangos con la mitad del peso de la venta y el CP.
 #
 # **Usar solo la data correcta (decisión del usuario): sueros e hidratación de la ciudad activa.** Si una línea viene con
 # otros productos, lo que importa es que tenga **sueros o sus derivados**.
@@ -614,8 +614,8 @@ plt.tight_layout(); plt.show()
 # | Regla | Criterio | Si no se cumple |
 # |---|---|---|
 # | R1 universo | ZM por polígono, sueros y derivados ("sueros primero"), ventana ene-2025 → ago-2026 (sección 1) | no entra |
-# | R2 tienda activa | ≥ `C.RAPPI_MIN_PEDIDOS` pedidos de sueros o derivados en la ventana (uno cada ~2 meses): la demanda se repite | esporádica: se reporta, no mueve su venta |
-# | R3 activa en sueros | ≥ `C.RAPPI_MIN_PEDIDOS` pedidos **con suero** | se reporta; el 06 prueba mover solo la venta de estas tiendas |
+# | R2 tienda activa | ≥ `C.RAPPI_MIN_PEDIDOS` pedidos de sueros o derivados en la ventana (uno cada ~2 meses): la demanda se repite | esporádica: se reporta; en el 06 entra al Rappi del buffer y su exclusión se prueba en la sensibilidad |
+# | R3 activa en sueros | ≥ `C.RAPPI_MIN_PEDIDOS` pedidos **con suero** | se reporta |
 # | R4 tipo | los Turbo (dark stores) se **marcan**: su venta es de toda su zona de reparto, no de sus 300 m | entra marcada (el 06 mide la sensibilidad sin ellos) |
 # | R5 señales | por tienda física: venta total y de sueros, pedidos y unidades por mes de vida, meses activos, % Coca-Cola, % pago en efectivo y Apple Pay | — |
 
@@ -692,14 +692,14 @@ hallazgos00c = pd.DataFrame([
                          f"mediana ${tf.venta_mes.median():,.0f}, Gini {eda.gini(tf.venta_mes):.2f}, el 20% de las tiendas hace {top20:.0%}. {MULTI}",
      "Venta muy concentrada: medianas y rangos, no medias; precio sin empaques múltiples."),
     ("Calendario", "; ".join(f"{r.prueba}: {r.efecto} ({r.detalle.split(' ·')[0]})" for r in calendario.itertuples()),
-     "La hidratación sigue al calor (abr–jun); la venta que mueve el 06 usa toda la ventana para no depender de la temporada."),
+     "La hidratación sigue al calor (abr–jun); el Rappi del 06 usa toda la ventana para no depender de la temporada."),
     ("Marcas", MARCAS, "Coca-Cola (sistema Bepensa) domina isotónicos; en sueros compite con marcas anonimizadas."),
     ("Canasta", f"Coca-Cola × competidor lift = {canasta.loc['Coca-Cola × competidor', 'lift']:.2f}; suero × isotónico lift = "
                 f"{canasta.loc['suero × isotónico', 'lift']:.2f} (Fisher p = {canasta.loc['suero × isotónico', 'p Fisher']:.0e}).",
      "Lift < 1: el comprador elige una marca o subcategoría por pedido (sustitutos)."),
     ("Clientes", CLIENTES, "RFM solo con Coca-Cola (competidores sin usuario)."),
     ("Espacial", ESPACIAL, "Los Turbo concentran la venta: su zona de reparto es de km, no de 300 m (el 06 mide la sensibilidad sin ellos)."),
-    ("Selección", SELECCION, "Pasan al 06 las tiendas físicas activas (R2) con sus señales (R5)."),
+    ("Selección", SELECCION, "Pasan al 06 todas las tiendas físicas con sus señales (R5); el 06 prueba usar solo las activas (R2) y quitar los Turbo (R4)."),
 ], columns=["tema", "hallazgo", "implicación"])
 with pd.option_context("display.max_colwidth", None):
     display(hallazgos00c)
@@ -741,7 +741,7 @@ X.hoja_tabla(wb, "Datos", FUENTES_RAPPI, titulo="Archivo de Rappi usado", anchos
 X.portada(wb, "EDA de Rappi · sueros e hidratación", f"{C.ZM_NOMBRE} · sueros y derivados · {mes_txt(ini)} → {mes_txt(cierre)}",
           [("Universo", f"{len(u):,} líneas, {u.order_code.nunique():,} pedidos, {len(tf)} tiendas físicas."),
            ("Filtros", "Tienda dentro de la ZM (polígono); sueros y derivados con la regla 'sueros primero'; ventana con cobertura completa."),
-           ("Uso", f"Letra 2 (notebook 06): la venta de cada tienda activa, en cajas, se mueve a los PDV con venta a ≤ {C.RADIO_PDV_M} m."),
+           ("Uso", f"Letra 2 (notebook 06): el Rappi de cada PDV es la venta media de las tiendas Rappi a ≤ {C.RADIO_PDV_M} m; entra por rango con peso 1."),
            ("Elaboró", "Kin Analytics · notebooks/_src/00c_rappi_eda.py")],
           [("Hallazgos", "Qué se encontró y qué implica."), ("Embudo", "Qué queda en cada filtro."), ("Reglas producto", "Qué regla clasifica cada línea."),
            ("Excluidas", "Qué sale y por qué."), ("Reasignación", "Marca, nombre y categoría."), ("Cobertura", "Cobertura del archivo por mes."),

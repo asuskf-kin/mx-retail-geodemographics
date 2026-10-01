@@ -11,7 +11,7 @@ Referencia visual: deck de Kin "Ultra segmentación · Customer Potential Model"
   Semáforos: verde 22C55E, amarillo EDA100, rojo E34948 (solo para semáforos).
 - Tipografía de marca: Albert Sans (texto) y Space Grotesk (títulos). **No están instaladas en todas las máquinas** y
   PowerPoint las sustituye: por defecto se usa Arial (`FUENTE_TITULO`, `FUENTE_TEXTO` en `deck_kin.py`).
-- Pie en cada lámina: "Kin Analytics®" · "Let knowledge in." · "KinAnalytics.com" sobre franja gris clara.
+- Pie en cada lámina: "Kin Analytics®" y "kinanalytics.com" (siempre en minúsculas) sobre franja gris clara. Nunca la frase "Let knowledge in" (no es tagline aprobado de Kin).
 - Etiqueta (kicker) gris en mayúsculas sobre el título; título 21 pt negrita (una idea, con la cifra calculada);
   subtítulo gris 9.5 pt; mensaje clave en barra negra con texto lima (o lima con texto negro).
 

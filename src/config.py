@@ -144,7 +144,7 @@ CLIENTE_RAW = RAW / CLIENTE_CIUDAD / CLIENTE      # data/raw/merida/bepensa/{ven
 # el CP cubre toda la peninsula: los notebooks 00 y 04 filtran a la ZM activa y escriben en PROC / OUT de la ciudad
 CLIENTE_VENTAS = sorted((CLIENTE_RAW / "ventas").glob("part-*.csv"))
 CLIENTE_CP = CLIENTE_RAW / "cp" / "conservative_scenario.csv"
-# señales AltScore (dataset Spark part-*.parquet): variable socioeconómica adicional (notebook 00b; se une en el 04 solo con ubicación)
+# señales AltScore (geohex_geodig.parquet, con location.lat/lng): variable socioeconómica adicional (notebook 00b; se une en el 04 y el 06 por ubicación)
 CLIENTE_ALTSCORE = CLIENTE_RAW / "enrichedgeodata"
 ALTSCORE_RES = 8           # celda H3 a la que se proyecta AltScore (res 8 = escala de sus señales OSM; lo digital es de ~1 km)
 # Area de influencia de cada punto de venta: hexagonos H3 cuyo centro esta a <= RADIO_PDV_M del punto.
@@ -169,18 +169,20 @@ RAPPI_MIN_PEDIDOS = 12     # tienda Rappi "activa" en hidratacion: >= 12 pedidos
 # ---- Letras por PDV (notebook 06, solo canal Tradicional y solo datos del CP; usuario, 2026-09-30) ----
 # Letra 1 = NSE de su CLUSTER NSE: el hexagono H3 de res NSE_CLUSTER_RES que contiene al PDV; su centro es el punto NSE y el
 # buffer de RADIO_PDV_M alrededor del centro da el NSE (res 9: arista ~174 m, todo PDV queda a <= ~210 m del centro, dentro del
-# buffer). Todos los PDV del hexagono comparten su NSE. Letra 2 = venta + CP del PDV contra los PDV con venta de su buffer.
+# buffer). Todos los PDV del hexagono comparten su NSE. Letra 2 = score de rangos de venta, CP y Rappi (abajo).
 NSE_CLUSTER_RES = 9
 # AltScore MUEVE EL NSE del cluster (usuario, 2026-09-30): su indice alrededor del centro se lleva a la escala de N (1-6) por
 # cuantiles y N* = (1 - peso) * N_INEGI + peso * N_AltScore, solo donde el buffer tiene >= ALTSCORE_MIN_PUNTOS puntos con indice.
 ALTSCORE_PESO_NSE = 0.25   # INEGI pesa 3 veces lo que AltScore (el Censo por manzana confirma a INEGI; a validar con el usuario)
 ALTSCORE_MIN_PUNTOS = 5
-# Rappi premia a la locacion MOVIENDO SU VENTA (decision del usuario, 2026-09-30): la venta de sueros e hidratacion de cada tienda
-# Rappi activa se pasa a cajas y se reparte en partes iguales entre los PDV con venta a <= RADIO_PDV_M, que la suman a la suya.
-RAPPI_BOTELLAS_CAJA = 12   # botellas de suero o isotonico por caja Bepensa: pasa la venta Rappi a cajas (a confirmar con Bepensa)
+# Letra 2 (usuario, 2026-09-30): vector del PDV = venta media, CP y Rappi (venta media de las tiendas Rappi de su buffer de
+# RADIO_PDV_M); cada variable pasa a su pct_rank descendente entre los PDV con venta (0 = el que mas vende) y el score es su
+# media ponderada; H si score < LETRA2_CORTE. Los rangos evitan convertir Rappi (pesos) a cajas. El PDV sin venta es L.
+LETRA2_PESOS = {"venta": 2, "cp": 2, "rappi": 1}   # Rappi pesa la mitad: no castigar tanto al PDV sin Rappi cerca
+LETRA2_CORTE = 0.4
 FRONTERA = 10              # |indice - 100| <= FRONTERA: la letra cambia con poco ruido (se marca, igual que en el 05)
-# Letra 2 (usuario, 2026-09-30): venta y potencial salen del CP (PotentialQuantitative_TotalPortafolio y
-# PotentialQuantitativeFinal_TotalPortafolio); ya no se usa el archivo de ventas. El potencial va en cajas enteras:
+# Letra 2: venta (PotentialQuantitative_TotalPortafolio) y potencial (PotentialQuantitativeFinal_TotalPortafolio) salen del CP;
+# el potencial va con decimales (usuario, 2026-09-30). El redondeo anterior queda solo como comparacion en el QA:
 CP_UMBRAL_REDONDEO = 0.6   # decimal < 0.6 -> hacia abajo (0.59 -> 0, 1.55 -> 1); >= 0.6 -> hacia arriba (0.6 -> 1, 1.6 -> 2)
 
 SCIAN_TIENDAS = {
