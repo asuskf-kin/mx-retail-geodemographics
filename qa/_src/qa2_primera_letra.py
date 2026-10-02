@@ -60,7 +60,7 @@ K_NSE = pd.Series({"A/B": 6, "C+": 5, "C": 4, "C-": 3, "D+": 2, "D/E": 1})
 RNG = np.random.default_rng(eda.SEMILLA)
 
 
-def boot(fn, *arrs, B=2000):
+def boot(fn, *arrs, B=500):
     """IC95 por bootstrap de tiendas (semilla fija)."""
     n, vals = len(arrs[0]), []
     for _ in range(B):
@@ -348,15 +348,104 @@ FINAL_L1 = (f"Primera letra: hoy (proceso del 06) acertamos {p06.exactitud:.0%} 
 print(FINAL_L1)
 
 # %% [markdown]
+# ## 4b. Toda la Región Sur: la primera letra de las 1,420 tiendas
+#
+# **Qué se hace:** el mismo proceso de la Letra 1 en la coordenada de cada tienda de la línea base, con los insumos del notebook 01
+# corrido por estado (`qasur_<ENT>`: los 15 estados de la Región Sur, todos sus municipios). Igual que el 04: cada manzana lleva el
+# NSE de su AGEB en proporción a sus hogares, se suman las localidades rurales, se actualiza a 2025 con el crecimiento municipal
+# de la Intercensal y se reparte **por área** en hexágonos H3 res 10; el clúster es el hexágono H3 res 9 de la tienda + los
+# hexágonos res 10 con centro a ≤ 300 m de su centro. Solo se arman los hexágonos alrededor de las tiendas.
+# **Validación:** en las 65 tiendas de la ZM Mérida este cálculo debe dar el mismo nivel NSE que el del 04 (sección 1).
+# AltScore solo existe en la ZM Mérida: fuera de ella la letra va solo con INEGI (λ = 0) y el corte "como hoy" es la media INEGI
+# de nuestros PDV (mismo corte del 06 sin AltScore).
+#
+# **Por qué:** para tener nuestra estimación en todas y cada una de las tiendas de Nielsen, no solo en Mérida.
+
+# %%
+from shapely.geometry import Polygon
+
+ENT_DE = {"Campeche": "04", "Chiapas": "07", "Ciudad de México": "09", "Guerrero": "12", "Hidalgo": "13", "México": "15", "Morelos": "17",
+          "Oaxaca": "20", "Puebla": "21", "Querétaro": "22", "Quintana Roo": "23", "Tabasco": "27", "Tlaxcala": "29",
+          "Veracruz de Ignacio de la Llave": "30", "Yucatán": "31"}
+nie["ENT"] = nie.Estado.astype(str).str.strip().map(ENT_DE)
+assert nie.ENT.notna().all(), f"estado sin clave: {nie.loc[nie.ENT.isna(), 'Estado'].unique()}"
+nie["lat"], nie["lon"] = pd.to_numeric(nie.Latitud, errors="coerce"), pd.to_numeric(nie.Longitud, errors="coerce")
+nie["cl"] = [h3.latlng_to_cell(a, b, RES_CL) for a, b in zip(nie.lat, nie.lon)]
+HHC = [f"HHs_{c}" for c in NSE]
+
+
+def nse_region(ent, filas):
+    """N del clúster (H3 res 9 + 300 m) para las tiendas `filas` del estado `ent`, con el método del 04 y los insumos del 01."""
+    P = BASE / "data" / "processed" / f"qasur_{ent}"
+    slug = f"zm_qasur_{ent}"
+    if not (P / f"manzanas_{slug}.gpkg").exists():
+        return pd.Series(np.nan, index=filas.index), "falta el 01 del estado"
+    ag = pd.read_parquet(P / f"nse_ageb_{slug}.parquet")
+    la_, lo_ = LT.centros(filas.cl)
+    celdas = sorted({h for v in LT.hexagonos_en_radio(la_, lo_, R300, C.H3_RES) for h in v})
+    mzr = gpd.read_file(P / f"manzanas_{slug}.gpkg")
+    rej = gpd.GeoDataFrame({"hex": celdas}, crs=4326, geometry=[Polygon([(b, a) for a, b in h3.cell_to_boundary(c)]) for c in celdas]).to_crs(mzr.crs)
+    caja = rej.total_bounds
+    mzr = mzr.cx[caja[0]:caja[2], caja[1]:caja[3]]
+    mzr = mzr.merge(ag[["CVEGEO", *HHC]], left_on="CVEGEO_AGEB", right_on="CVEGEO", suffixes=("", "_a"))
+    mzr[HHC] = mzr[HHC].values * mzr.share.values[:, None]
+    mzr = mzr[mzr[HHC[0]].notna() & (mzr.hog > 0)]
+    mzr["MUN"] = mzr.CVEGEO.str[2:5]
+    rur = gpd.read_file(P / f"rurales_{slug}.gpkg").to_crs(mzr.crs).cx[caja[0]:caja[2], caja[1]:caja[3]]
+    piezas = gpd.GeoDataFrame(pd.concat([mzr[["MUN", *HHC, "geometry"]], rur[["MUN", *HHC, "geometry"]]], ignore_index=True), crs=mzr.crs)
+    f_crec = P / f"crecimiento_municipal_{slug}.parquet"
+    if f_crec.exists():
+        crec = pd.read_parquet(f_crec)
+        piezas[HHC] = piezas[HHC].values * piezas.MUN.map(crec.factor_hogares).fillna(1.0).values[:, None]
+    piezas["area_p"] = piezas.geometry.area
+    ped = gpd.overlay(piezas[["area_p", *HHC, "geometry"]], rej, how="intersection", keep_geom_type=True)
+    ped[HHC] = ped[HHC].values * (ped.geometry.area / ped.area_p).values[:, None]
+    hexr = ped.groupby("hex")[HHC].sum().set_axis(NSE, axis=1)
+    hh_ = LT.suma_area(hexr, LT.hexagonos_en_radio(la_, lo_, R300, C.H3_RES)).set_axis(NSE, axis=1)
+    return pd.Series(LT.nivel_medio(hh_).to_numpy(), index=filas.index), "ok"
+
+
+nie["N_region"], estado_ok = np.nan, {}
+for ent, filas in nie.groupby("ENT"):
+    n_, st_ = nse_region(ent, filas)
+    nie.loc[filas.index, "N_region"] = n_
+    estado_ok[ent] = st_
+print("Estados:", ", ".join(f"{e} {v}" for e, v in estado_ok.items()))
+# validación en la ZM Mérida: cálculo regional vs el del 04 (sección 1)
+val = zm[["Nielsen ID", "N_cluster"]].merge(nie[["Nielsen ID", "N_region"]], on="Nielsen ID")
+RHO_VAL = stats.spearmanr(val.N_cluster, val.N_region, nan_policy="omit")[0]
+DIF_VAL = (val.N_cluster - val.N_region).abs().median()
+print(f"Validación en la ZM Mérida (65 tiendas): ρ = {RHO_VAL:.3f}, |diferencia| mediana {DIF_VAL:.3f} en la escala 1-6 (mismo método, sin el 04).")
+# letra "como hoy": en la ZM Mérida, la del 04 con AltScore; fuera, INEGI con el corte INEGI de nuestros PDV
+nie["N_est"] = nie["Nielsen ID"].map(zm.set_index("Nielsen ID").N_cluster_alt).fillna(nie.N_region)
+en_zm = nie["Nielsen ID"].isin(zm["Nielsen ID"])
+corte_hoy = np.where(en_zm, CORTE_06["N_cluster_alt"], CORTE_06["N_cluster"])
+nie["L1_hoy"] = np.where(nie.N_est.isna(), None, np.where(nie.N_est >= corte_hoy, "H", "L"))
+nie["L1_rel"] = np.where(nie.N_est.isna(), None, np.where(nie.N_est >= nie.N_est.mean(), "H", "L"))
+nie["L1n"] = nie["Cluster"].astype(str).str.strip().str[0]
+okr = nie.N_est.notna()
+reg_hoy = medir("4b · Región Sur", "N_est", "como hoy (corte del 06)", nie.L1n[okr], nie.N_est[okr], corte_hoy[okr.to_numpy()])
+reg_rel = medir("4b · Región Sur", "N_est", "relativo (media de las tiendas)", nie.L1n[okr], nie.N_est[okr], nie.N_est[okr].mean())
+reg_ref = medir("4b · Región Sur", "N_est", f"referencia Nielsen (N ≥ {N_REF:.2f})", nie.L1n[okr], nie.N_est[okr], N_REF)
+region = pd.DataFrame([reg_hoy, reg_rel, reg_ref])
+por_estado = (nie[okr].assign(ok_hoy=lambda t: t.L1_hoy == t.L1n, ok_rel=lambda t: t.L1_rel == t.L1n)
+              .groupby("Estado").agg(tiendas=("L1n", "size"), **{"% acierto como hoy": ("ok_hoy", "mean")}, **{"% acierto corte relativo": ("ok_rel", "mean")}))
+por_estado.iloc[:, 1:] *= 100
+display(region.round(3))
+display(por_estado.round(0))
+REGION = (f"Región Sur ({int(okr.sum()):,} de {len(nie):,} tiendas con estimación): como hoy {reg_hoy['exactitud']:.0%}, corte relativo "
+          f"{reg_rel['exactitud']:.0%}, referencia de Nielsen {reg_ref['exactitud']:.0%}. Validación del cálculo en Mérida: ρ = {RHO_VAL:.2f}.")
+print(REGION)
+
+# %% [markdown]
 # ## 5. Entregable sencillo: el QA en %
 #
 # **Qué se hace:** una sola hoja (`qa/salidas/QA_en_porcentaje_bepensa_zm_merida.xlsx`) con el % de supermercados de Nielsen en
 # los que acertamos su letra, en las dos formas de inferirla:
 # **QA 1 · tiendas alrededor** (la letra de la mayoría de nuestras tiendas Tradicional a 500 m) y **QA 2 · punto geográfico**
 # (nuestro proceso de la Letra 1 aplicado en la coordenada del supermercado). El detalle técnico queda en los notebooks.
-# Una segunda hoja, **Tiendas**, trae cada supermercado con su coordenada, su primera letra de Nielsen y nuestra estimación,
-# enriquecido con **calles** (las dos vialidades más cercanas del Marco Geoestadístico: la de enfrente y la de la esquina) y su
-# **manzana** (clave, AGEB, hogares 2020 y el índice del Censo de esa manzana).
+# Una segunda hoja, **Tiendas**, trae las 1,420 tiendas de la línea base con su coordenada, su primera letra de Nielsen y nuestra
+# estimación (solo en la ZM Mérida, donde hay insumos INEGI procesados; el resto dice 'sin estimar').
 
 # %%
 import excel_kin as X
@@ -371,63 +460,39 @@ resumen = pd.DataFrame([
     ("QA 1 · Tiendas alrededor", TIENDAS, "Letra 1 (NSE)", g1.exactitud, int(g1.n)),
     ("QA 1 · Tiendas alrededor", TIENDAS, "Letra 2 (venta)", g2.exactitud, int(g2.n)),
     ("QA 1 · Tiendas alrededor", TIENDAS, "Las dos letras", g12.exactitud, int(g12.n)),
-    ("QA 2 · Punto geográfico", PUNTO, "Letra 1 · como hoy (corte del 06)", p06.exactitud, int(p06.n)),
-    ("QA 2 · Punto geográfico", PUNTO, f"Letra 1 · con el corte {pmejor.corte.split(' (')[0]}", pmejor.exactitud, int(pmejor.n)),
+    ("QA 2 · Punto geográfico · ZM Mérida", PUNTO, "Letra 1 · como hoy (corte del 06)", p06.exactitud, int(p06.n)),
+    ("QA 2 · Punto geográfico · ZM Mérida", PUNTO, f"Letra 1 · con el corte {pmejor.corte.split(' (')[0]}", pmejor.exactitud, int(pmejor.n)),
+    ("QA 2 · Punto geográfico · Región Sur", PUNTO, "Letra 1 · como hoy (corte del 06)", reg_hoy["exactitud"], int(reg_hoy["n"])),
+    ("QA 2 · Punto geográfico · Región Sur", PUNTO, "Letra 1 · con el corte relativo", reg_rel["exactitud"], int(reg_rel["n"])),
 ], columns=["QA", "cómo se infiere la letra", "letra", "% de acierto", "supermercados"])
 resumen["% de acierto"] = (resumen["% de acierto"] * 100).round(0)
 display(resumen)
 NOTA = ("% de acierto = % de supermercados de Nielsen (Golden Stores Sueros FY'23, ZM Mérida) con la misma letra que la nuestra. "
         "Nielsen es canal Moderno y nosotros Tradicional: no hay tiendas en común, se compara la zona.")
-# hoja Tiendas: coordenada, letras y enriquecimiento con calles y manzanas (Marco Geoestadístico de INEGI)
-descargar_fuente(C.FUENTES["mg"])
-D_MG = extraer(C.ARCHIVOS["mg"])
-CRS_M = mzg.crs
-pts_m = gpd.GeoDataFrame(zm[["Nielsen ID"]], geometry=gpd.points_from_xy(zm.lon, zm.lat), crs=4326).to_crs(CRS_M)
-caja = pts_m.total_bounds + np.array([-300, -300, 300, 300])
-ejes = gpd.read_file(next(D_MG.rglob(f"{C.ENT}e.shp")), bbox=tuple(gpd.GeoSeries.from_xy([caja[0], caja[2]], [caja[1], caja[3]], crs=CRS_M)
-                                                              .to_crs(gpd.read_file(next(D_MG.rglob(f"{C.ENT}e.shp")), rows=1).crs).total_bounds))
-ejes = ejes.to_crs(CRS_M)
-ejes = ejes[~ejes.NOMVIAL.fillna("Ninguno").isin(["Ninguno", "", "Sin Nombre", "SIN NOMBRE"])].reset_index(drop=True)
-calles = []
-for g_ in pts_m.geometry:
-    cerca = ejes.assign(d=ejes.distance(g_)).nsmallest(40, "d")
-    cerca = cerca.sort_values("d").drop_duplicates("NOMVIAL")
-    c1 = cerca.iloc[0] if len(cerca) else None
-    c2 = cerca.iloc[1] if len(cerca) > 1 else None
-    calles.append({"calle más cercana": f"{c1.TIPOVIAL} {c1.NOMVIAL}" if c1 is not None else None, "distancia a la calle (m)": round(c1.d) if c1 is not None else None,
-                   "esquina / 2.ª calle": f"{c2.TIPOVIAL} {c2.NOMVIAL}" if c2 is not None else None, "distancia a la 2.ª calle (m)": round(c2.d) if c2 is not None else None})
-calles = pd.DataFrame(calles)
-mz_shp = gpd.read_file(next(D_MG.rglob(f"{C.ENT}m.shp")), bbox=tuple(gpd.GeoSeries.from_xy([caja[0], caja[2]], [caja[1], caja[3]], crs=CRS_M)
-                                                                  .to_crs(gpd.read_file(next(D_MG.rglob(f"{C.ENT}m.shp")), rows=1).crs).total_bounds)).to_crs(CRS_M)
-jm = gpd.sjoin_nearest(pts_m, mz_shp[["CVEGEO", "TIPOMZA", "geometry"]], how="left", distance_col="distancia a la manzana (m)")
-jm = jm[~jm.index.duplicated()]
-manz = pd.DataFrame({"manzana (CVEGEO)": jm.CVEGEO.to_numpy(), "tipo de manzana": jm.TIPOMZA.to_numpy(),
-                     "distancia a la manzana (m)": jm["distancia a la manzana (m)"].round(0).to_numpy()})
-manz["AGEB"] = manz["manzana (CVEGEO)"].str[:13]
-manz["hogares de la manzana (Censo 2020)"] = manz["manzana (CVEGEO)"].map(mzg.set_index("CVEGEO").hog).round(0)
-manz["índice Censo de la manzana (0-100)"] = manz["manzana (CVEGEO)"].map(cz.set_index("CVEGEO").indice_censo).round(0)
+# hoja Tiendas: coordenada y letras de cada supermercado
 L1_06 = np.where(zm.N_cluster_alt >= CORTE_06["N_cluster_alt"], "H", "L")
 L1_rel = np.where(zm.N_cluster_alt >= zm.N_cluster_alt.mean(), "H", "L")
-tiendas = pd.concat([pd.DataFrame({
-    "tienda Nielsen": zm["Store Name"].astype(str).str.replace(r"\s*-\s*\d+X\d+$", "", regex=True).str.strip(), "Nielsen ID": zm["Nielsen ID"],
-    "cadena": zm.cadena, "latitud": zm.lat.round(6), "longitud": zm.lon.round(6), "dirección (Nielsen)": zm["Dirección"], "colonia (Nielsen)": zm["Colonia"],
-    "CP": zm["Código Postal"], "municipio": zm.Municipio, "1.ª letra Nielsen": zm.L1n, "nuestra 1.ª letra (como hoy)": L1_06,
-    "acierta (como hoy)": np.where(L1_06 == zm.L1n, "sí", "no"), "nuestra 1.ª letra (corte relativo)": L1_rel,
-    "acierta (corte relativo)": np.where(L1_rel == zm.L1n, "sí", "no"), "NSE Nielsen (1-6)": zm.N_nielsen.round(2),
-    "NSE nuestro del clúster (1-6)": zm.N_cluster_alt.round(2)}), calles, manz], axis=1)
-display(tiendas.head(10))
-print(f"Tiendas: aciertan {(tiendas['acierta (como hoy)'] == 'sí').mean():.0%} como hoy y {(tiendas['acierta (corte relativo)'] == 'sí').mean():.0%} "
-      f"con corte relativo; calle a ≤ 50 m en {(calles['distancia a la calle (m)'] <= 50).mean():.0%}; dentro de su manzana en "
-      f"{(manz['distancia a la manzana (m)'] == 0).mean():.0%}.")
+# todas las tiendas de la línea base (1,420) con nuestra estimación (sección 4b)
+SIN_EST = "sin estimar (sin insumos INEGI del estado)"
+tiendas = pd.DataFrame({
+    "tienda Nielsen": nie["Store Name"].astype(str).str.replace(r"\s*-\s*\d+X\d+$", "", regex=True).str.strip(),
+    "latitud": nie.lat.round(6), "longitud": nie.lon.round(6), "colonia (Nielsen)": nie["Colonia"], "CP": nie["Código Postal"],
+    "municipio": nie.Municipio, "1.ª letra Nielsen": nie.L1n, "nuestra 1.ª letra (como hoy)": nie.L1_hoy})
+tiendas["acierta (como hoy)"] = np.where(tiendas["nuestra 1.ª letra (como hoy)"].isna(), SIN_EST,
+                                         np.where(tiendas["nuestra 1.ª letra (como hoy)"] == tiendas["1.ª letra Nielsen"], "sí", "no"))
+tiendas["nuestra 1.ª letra (como hoy)"] = tiendas["nuestra 1.ª letra (como hoy)"].fillna(SIN_EST)
+con_est = tiendas["acierta (como hoy)"].ne(SIN_EST)
+print(f"Tiendas: {len(tiendas):,}; {int(con_est.sum()):,} con nuestra estimación, que aciertan {(tiendas.loc[con_est, 'acierta (como hoy)'] == 'sí').mean():.0%}; "
+      f"{int((~con_est).sum()):,} sin estimar.")
+display(tiendas[con_est].head(10))
 
 wb = X.libro()
 X.hoja_tabla(wb, "QA en %", resumen, titulo="¿Cuánto le atinamos a las letras de Nielsen?", nota=NOTA, ajustar=True,
              formatos={"% de acierto": r"0\%"}, anchos={"QA": 26, "cómo se infiere la letra": 62, "letra": 34, "% de acierto": 14, "supermercados": 14})
-X.hoja_tabla(wb, "Tiendas", tiendas, titulo="Cada supermercado de Nielsen: su primera letra y la nuestra, con calles y manzana",
-             nota="Calles y manzanas: Marco Geoestadístico INEGI (ejes de vialidad y manzanas). 'Como hoy' = corte del 06; 'corte relativo' = media de los 65.",
+X.hoja_tabla(wb, "Tiendas", tiendas, titulo="Las 1,420 tiendas de Nielsen: su primera letra y la nuestra",
+             nota="'Como hoy' = proceso de la Letra 1 del 06 en la coordenada de la tienda (ZM Mérida con AltScore; resto de la región solo INEGI).",
              formatos={"latitud": "0.000000", "longitud": "0.000000"},
-             anchos={"tienda Nielsen": 40, "dirección (Nielsen)": 40, "colonia (Nielsen)": 26, "calle más cercana": 30, "esquina / 2.ª calle": 30,
-                     "manzana (CVEGEO)": 20})
+             anchos={"tienda Nielsen": 44, "colonia (Nielsen)": 28, "municipio": 26, "nuestra 1.ª letra (como hoy)": 34, "acierta (como hoy)": 34})
 XLSX = OUT / f"QA_en_porcentaje_{C.CLIENTE}_{C.SLUG}.xlsx"
 try:
     wb.save(XLSX)

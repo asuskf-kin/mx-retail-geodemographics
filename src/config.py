@@ -31,6 +31,35 @@ CIUDADES = {
         RAPPI_CIUDAD=["GUADALAJARA"],
     ),
 }
+
+# ---- QA 2 (qa/): los 15 estados de la Region Sur de Nielsen como "ciudades" de estado completo (todos sus municipios) ----
+# Solo para estimar la 1.a letra de las 1,420 tiendas de la linea base (no son analisis de cliente; usuario, 2026-10-01).
+# Nombres de archivo de INEGI verificados con HEAD el 2026-10-01 (muestra: Chiapas = chs, Tlaxcala = tla; Marco: Veracruz largo).
+# Los municipios se leen de qa/estados/municipios_<ENT>.json, que escribe qa/preparar_estados.py desde el ITER del estado.
+_QA_SUR = {  # ENT: (nombre, abreviatura de la muestra censal, slug del Marco Geoestadistico, estados ENIGH)
+    "04": ("Campeche", "cam", "campeche", ["04", "23", "27", "31"]),
+    "07": ("Chiapas", "chs", "chiapas", ["07", "12", "20"]),
+    "09": ("Ciudad de México", "cdmx", "ciudaddemexico", ["09", "15"]),
+    "12": ("Guerrero", "gro", "guerrero", ["07", "12", "20"]),
+    "13": ("Hidalgo", "hgo", "hidalgo", ["13", "17", "21", "22", "29"]),
+    "15": ("México", "mex", "mexico", ["09", "15"]),
+    "17": ("Morelos", "mor", "morelos", ["13", "17", "21", "22", "29"]),
+    "20": ("Oaxaca", "oax", "oaxaca", ["07", "12", "20"]),
+    "21": ("Puebla", "pue", "puebla", ["13", "17", "21", "22", "29"]),
+    "22": ("Querétaro", "qro", "queretaro", ["13", "17", "21", "22", "29"]),
+    "23": ("Quintana Roo", "qroo", "quintanaroo", ["04", "23", "27", "31"]),
+    "27": ("Tabasco", "tab", "tabasco", ["04", "23", "27", "30"]),
+    "29": ("Tlaxcala", "tla", "tlaxcala", ["13", "17", "21", "22", "29"]),
+    "30": ("Veracruz", "ver", "veracruzignaciodelallave", ["21", "27", "30"]),
+    "31": ("Yucatán", "yuc", "yucatan", ["04", "23", "27", "31"]),
+}
+for _e, (_nom, _ab, _mg, _enigh) in _QA_SUR.items():
+    _j = BASE / "qa" / "estados" / f"municipios_{_e}.json"
+    CIUDADES[f"qasur_{_e}"] = dict(
+        ENT=_e, NOM_ENT=_nom, ABREV_MICRO=_ab, MG_SLUG=_mg, REGION_NIELSEN="Región Sur (QA)",
+        ZM_NOMBRE=f"Estado de {_nom} (QA)",
+        ZM_MUNICIPIOS=__import__("json").loads(_j.read_text(encoding="utf-8")) if _j.exists() else {},
+        ENIGH_ESTADOS=_enigh, RAPPI_CIUDAD=[])
 _c = CIUDADES[CIUDAD]
 ENT, NOM_ENT, ABREV_MICRO, MG_SLUG = _c["ENT"], _c["NOM_ENT"], _c["ABREV_MICRO"], _c["MG_SLUG"]
 REGION_NIELSEN, ZM_NOMBRE, ZM_MUNICIPIOS = _c["REGION_NIELSEN"], _c["ZM_NOMBRE"], _c["ZM_MUNICIPIOS"]

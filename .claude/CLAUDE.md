@@ -10,8 +10,8 @@ Para replicarlo en otra ciudad usa la skill `/nse-tiendas-mx` (en `.claude/skill
 ## Para empezar (persona o sesión nueva) — estado al 2026-10-01
 **Reglas de trabajo** (pedidas por el usuario; antes vivían solo en la memoria local de una sesión):
 1. **Solo ZM Mérida.** Es la única ciudad con datos del cliente; no re-correr Guadalajara ni otras al cambiar código o fuentes.
-2. **Sin datos del cliente no se avanza:** el 05 necesita ventas + CP en `data/raw/merida/bepensa/{ventas,cp}`; el 06 solo el CP (trae la
-   venta). Si faltan, detenerse y pedirlos (no están en git). Rappi (`data/raw/rappi/rappi.csv`) y AltScore (`enrichedgeodata/`) tampoco.
+2. **Sin datos del cliente no se avanza:** el 05 y el 06 usan **solo el CP** (`data/raw/merida/bepensa/cp`; trae la venta media): "ya no
+   ocupamos ventas, ahora solo ocupamos CP" (usuario, 2026-10-01). El archivo de ventas solo lo lee el 00 (validación) y el 04 (columnas de QA). Si faltan, detenerse y pedirlos (no están en git). Rappi (`data/raw/rappi/rappi.csv`) y AltScore (`enrichedgeodata/`) tampoco.
 3. **Al cambiar una regla se actualiza todo:** notebook `_src` → CLAUDE.md (decisiones y cifras de referencia) → flujograma
    (`docs/flujo_pipeline.dataflow.json`, skill archify: `deliver` + `visual-check`) → entregables de `cliente/` y mapa HTML → flujo completo
    (`uv run python src/correr.py --pasos 00,00b,00c,01,02,03,04,05,06 merida`, ≈ 7 min) → **presentaciones en Claude Design**.
@@ -41,10 +41,10 @@ Para replicarlo en otra ciudad usa la skill `/nse-tiendas-mx` (en `.claude/skill
 6. Commits solo cuando el usuario lo pide.
 
 **Pendientes de decisión del usuario** (no cambiar sin preguntar):
-- Letra 2: el PDV sin Rappi a 300 m (88%) empata en el rango medio (0.56) y por eso Rappi baja 204 letras y sube 83; cualquier Rappi
+- Letra 2: el PDV sin Rappi a 300 m (88%) empata en el rango medio (0.56) y por eso Rappi baja 185 letras y sube 43; cualquier Rappi
   queda en el 12% de arriba. Opciones: rango neutro o score solo con venta y CP para quien no tiene Rappi.
 - AltScore: índice débil (α 0.47, 2 proxies) que mueve 447 Letras 1 con λ = 0.25.
-- Tiendas Rappi: hoy entran todas (221); el 00c dice que pasan las activas (106). Con solo activas cambian 91 Letras 2.
+- Tiendas Rappi: hoy entran todas (221); el 00c dice que pasan las activas (106). Con solo activas cambian 16 Letras 2.
 - Índice del 04/05 vs ZM: la referencia es la ZM 2020 urbana (`nse_ageb`), pero los hogares son 2025 con rurales (A/B ≈ 94, D/E ≈ 107
   para una zona con la mezcla media). Validar Nielsen (1.ª letra en sueros) cuando el usuario comparta esas tiendas.
 - Share y prioridad P1–P4 (omitidos hasta que el usuario dé la fuente del share).
@@ -164,9 +164,11 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
   (ítem-resto ≥ 0.2, `altscore.seleccionar_proxies`): índice NSE AltScore = PC1 de **iOS % y macOS %** (α 0.47, 65% de la varianza,
   cobertura 98%). Pasan el índice + 7 señales (una por dimensión; cubren 8 de 19 dimensiones). QA: la selección se reproduce en 55% de
   las mitades; α fuera de muestra 0.48 (IC 0.35–0.60). Faltantes OSM no MCAR.
-- 05 Tradicional: 5,556 tiendas. HH 786 (14%, 27% de la venta, índice 189) · HL 1,922 · LH 1,138 (47% de la venta) · LL 1,710.
-  P1 = 1,554 tiendas (66% de la venta ubicada); HH verde 165. HL no activas 1,070 (56%). Piloto recomendado: HH verde y amarillo (594 tiendas,
-  59 zonas H3 r7, MDE 10.3% sin línea base / 6% con línea base). Excluidas sin hogares: 51 tiendas (1% de la venta).
+- 05 Tradicional (solo CP desde 2026-10-01: venta = `PotentialQuantitative_CustomCat_sueros`): 5,556 tiendas. HH 771 (14%, 24% de la
+  venta, índice 174) · HL 1,937 · LH 1,109 (42% de la venta) · LL 1,739. P1 = 1,503 tiendas (58% de la venta; 12,500 cajas/mes, +10% =
+  1,250); HH verde 154. Venta del canal 21,395 cajas/mes. ρ(hogares, venta) = −0.11. Piloto recomendado: HH verde y amarillo (573 tiendas,
+  59 zonas H3 r7, MDE 10% sin línea base / 6% con línea base). Excluidas sin hogares: 51 tiendas (1% de la venta). La versión con el archivo
+  de ventas (P1 1,554 · 66% · índice HH 189) quedó en `cliente/anteriores/*_2026-09-30_con_ventas.*`.
 
 ### Rappi (notebook 00c, `data/raw/rappi/rappi.csv`, nacional: 864,704 líneas)
 - ZM Mérida (polígono): 29,785 líneas; la etiqueta `city` ("Merida"/"Mérida") coincide 100% con el polígono (4 líneas sin coordenadas).
@@ -189,12 +191,13 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
   directa. λ = 0.25 → cambia 447 Letras 1 (299 ↑, 148 ↓; 8%); λ = 0.5 → 974; λ = 1 → 1,827 (κ con el Censo 0.76 · 0.62 · 0.32).
 - Letra 1 = H en 48% (sin AltScore 46%); confirmada por el Censo en 88% (solo INEGI 91%); κ de la letra INEGI con ABC+ 0.93, Censo 0.83,
   buffer del propio PDV 0.95, buffers de 200/400 m 0.96/0.97, AltScore solo 0.26, hogares (sin NSE) 0.22.
-- Letra 2 = score de rangos (usuario, 2026-09-30): H en 29.4% de los objetivo (sin Rappi 31.6%). Venta del CP mediana 2.58 cajas/mes;
+- Letra 2 = score de rangos (usuario, 2026-09-30): H en 29.1% de los objetivo (sin Rappi 31.7%). Venta del CP (sueros) mediana 2.57 cajas/mes;
   CP con decimales mediana 0.17, 19% en 0 (redondeado quedaba 79%); ρ(venta, CP) = +0.22. Rappi del buffer: 221 tiendas (106 activas),
-  643 PDV objetivo (11.6%) con alguna a ≤ 300 m; el 88% sin Rappi empata en el rango 0.56. Rappi cambia 287 letras (83 ↑, **204 ↓**: el
-  rango medio de "sin Rappi" baja a quien estaba cerca del corte). Misma letra: sin CP 81%, CP redondeado 88%, pesos 1·1·1 95%, corte
-  0.35 / 0.45 93%, solo tiendas activas 98%, suma en vez de media 100%, empates en el peor rango 91%. Venta con vs sin Rappi: δ = −0.01.
-- Letras finales: HH 815 (15% de tiendas, 24% de la venta, índice 161) · HL 1,874 · LH 824 (25%) · LL 2,053; 87% igual a las letras
+  643 PDV objetivo (11.6%) con alguna a ≤ 300 m; el 88% sin Rappi empata en el rango 0.56. Rappi (solo sueros Coca-Cola) cambia 228 letras (43 ↑, **185 ↓**: el
+  rango medio de "sin Rappi" baja a quien estaba cerca del corte). Misma letra: sin CP 81%, CP redondeado 88%, pesos 1·1·1 97%, corte
+  0.35 / 0.45 94% / 93%, solo tiendas activas 99.7%, suma en vez de media 100%, empates en el peor rango 90%. Venta con vs sin Rappi: δ = −0.01.
+- Letras finales (corrida del 2026-10-01): HH 786 (14% de tiendas, 23% de la venta, índice 161) · HL 1,903 (24%) · LH 834 (25%) · LL 2,043
+  (28%); 88% igual a las letras
   base (solo INEGI + CP). Los 1,418 PDV sin venta con NSE quedan L en la Letra 2. Excel de 16 hojas (con "Vector Letra 2"); deck de 14 láminas;
   tabla intermedia en `data/processed/merida/bepensa/letra2_vector_bepensa_zm_merida.parquet`.
 
@@ -235,18 +238,20 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
   **En el 06 (usuario, 2026-09-30) la venta SALE DEL CP:** `PotentialQuantitative_TotalPortafolio` es la venta media (ya no se usa el
   archivo de ventas en las letras) y el CP es `PotentialQuantitativeFinal_TotalPortafolio` **con decimales** (usuario, 2026-09-30: "0.6
   cajas son más de 10 unidades"; el redondeo `CP_UMBRAL_REDONDEO` solo queda en el QA). El 06 ya no usa el archivo de ventas en nada, ni para el QA
-  (usuario: "usa solo datos de cp"); el 05 sí lo usa.
+  (usuario: "usa solo datos de cp"). **El 05 tampoco desde 2026-10-01** (usuario: "ya no ocupamos ventas ahora solo ocupamos CP"): su venta
+  es la venta media de sueros del CP (`PotentialQuantitative_{CP_CATEGORIA}`), "con venta" = venta media > 0, clase y brecha de sueros.
 - **El CP es potencial futuro: variable de clasificación (clase Very High → Low), no decisiva** en el 05. Ojo: la clase mide potencial
   ABSOLUTO (venta actual × brecha): Very High = 0% en la mitad inferior de venta. La brecha relativa (`PotentialEstimatedToCover`) va en el Excel.
   **Excepción decidida por el usuario (2026-09-30): en la Letra 2 del 06 el potencial (`PotentialQuantitativeFinal`) entra al score con peso 2.**
 - **Los hogares ocupan toda la manzana**: se reparten por área entre hexágonos (no por centroide) y entran las localidades rurales;
   las manzanas del Censo sin polígono se reparten sobre su AGEB. Nada queda fuera del área por usar un punto.
-- **QA metodológico del 05 (no quitar):** la brecha HL vs HH es por construcción (no se presenta como oportunidad); en HL se reporta
-  actividad (primero reactivar); semáforo con venta y demanda en log; marcas de frontera (±10) y alta reciente; hoja de excluidas;
+- **QA metodológico del 05 (no quitar):** la brecha HL vs HH es por construcción (no se presenta como oportunidad); semáforo con venta
+  y demanda en log; marcas de frontera (±10); hoja de excluidas (actividad, alta reciente y "HL no activas" se quitaron el 2026-10-01: el CP
+  no trae fechas; decisión del usuario);
   piloto sorteado por zonas H3 r7 con MDE y efecto de diseño; se mide piloto vs control, nunca antes vs después.
 - **Metodología Golden Stores (NielsenIQ) fija, no se cambia**: clústeres HH/HL/LH/LL con índice 100 por subcanal, Atacar/Bloquear/
   Fortalecer/Mantener, semáforos por desviación estándar, P1 = HH y LH en verde y amarillo. Deck para el canal **Tradicional**.
-- **Sin datos de ventas + CP del cliente no se avanza**: se piden (el resto de fuentes se descarga solo).
+- **Sin el CP del cliente no se avanza**: se pide (el resto de fuentes se descarga solo). El 05 y el 06 ya no usan el archivo de ventas.
 - **AltScore = una variable socioeconómica más** (junto al NSE AMAI de INEGI), unida **solo por ubicación**: la exportación del 2026-09-30
   (`geohex_geodig.parquet`) trae `location.lat/lng` → cada PDV (04) o clúster NSE (06) toma la media de los puntos AltScore de su buffer de
   300 m; si una exportación solo trajera `hexIdx`, la rama hexIdx del 04 proyecta cada celda. El `pos_id` de AltScore no cruza con el CP y
