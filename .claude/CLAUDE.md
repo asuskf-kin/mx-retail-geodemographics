@@ -7,14 +7,21 @@ Separa los canales **Moderno** (cadenas) y **Tradicional** (abarrotes e independ
 
 Para replicarlo en otra ciudad usa la skill `/nse-tiendas-mx` (en `.claude/skills/nse-tiendas-mx/`).
 
-## Para empezar (persona o sesión nueva) — estado al 2026-10-01
+## Para empezar (persona o sesión nueva) — estado al 2026-10-05
 **Reglas de trabajo** (pedidas por el usuario; antes vivían solo en la memoria local de una sesión):
-1. **Solo ZM Mérida.** Es la única ciudad con datos del cliente; no re-correr Guadalajara ni otras al cambiar código o fuentes.
-2. **Sin datos del cliente no se avanza:** el 05 y el 06 usan **solo el CP** (`data/raw/merida/bepensa/cp`; trae la venta media): "ya no
-   ocupamos ventas, ahora solo ocupamos CP" (usuario, 2026-10-01). El archivo de ventas solo lo lee el 00 (validación) y el 04 (columnas de QA). Si faltan, detenerse y pedirlos (no están en git). Rappi (`data/raw/rappi/rappi.csv`) y AltScore (`enrichedgeodata/`) tampoco.
+1. **Ciudades con cliente (independientes):** ZM Mérida = **Bepensa** y ZM Guadalajara = **Arca** (usuario, 2026-10-05; `config.CLIENTES`).
+   Cada ciudad usa solo sus datos y un cambio para una no debe alterar la otra; no correr otras ciudades. (El CP de FEMSA no cubre
+   Guadalajara: es Valle de México y Bajío.)
+2. **Sin datos del cliente no se avanza:** **CP y AltScore son obligatorios** (`data/raw/<ciudad>/<cliente>/cp/` y `enrichedgeodata/`;
+   usuario, 2026-10-05: "altscore también es obligatorio… si no parar el proceso"): `src/correr.py` no corre la ciudad si falta uno.
+   El 05 y el 06 usan **solo el CP** (trae la venta media): "ya no ocupamos ventas" (2026-10-01). **Las ventas ya no se usan para nada**
+   (usuario, 2026-10-05): todas las ciudades corren `00_cp_validacion` (`ventas=None` en `config.CLIENTES`; el notebook
+   `00_ventas_cp_validacion` queda solo como histórico y no se pide el archivo de ventas). Rappi (`data/raw/rappi/`)
+   y Whisp (`data/raw/whisp/Whisp.csv`, opcional) tampoco están en git.
 3. **Al cambiar una regla se actualiza todo:** notebook `_src` → CLAUDE.md (decisiones y cifras de referencia) → flujograma
    (`docs/flujo_pipeline.dataflow.json`, skill archify: `deliver` + `visual-check`) → entregables de `cliente/` y mapa HTML → flujo completo
-   (`uv run python src/correr.py --pasos 00,00b,00c,01,02,03,04,05,06 merida`, ≈ 7 min) → **presentaciones en Claude Design**.
+   (`uv run python src/correr.py --pasos 00,00b,00c,01,02,03,04,05,07,06 <ciudad>`, Mérida ≈ 7 min; Guadalajara ≈ 40 min: lanzarlo
+   como proceso aparte con log, las tareas en segundo plano se cortan a los 30 min) → **presentaciones en Claude Design**.
 4. **Presentaciones = Claude Design** (usuario, 2026-10-01): toda presentación nueva o actualizada se hace como artifact del tipo
    **Slides** con el design system **"Kin Design System - Kin Official"** (default de la organización; Space Grotesk + Albert Sans, logos
    PNG de `templates/kin-presentation/assets/`; los SVG no se pueden copiar entre artifacts). Guarda versiones solas. El pptx de
@@ -27,6 +34,8 @@ Para replicarlo en otra ciudad usa la skill `/nse-tiendas-mx` (en `.claude/skill
    | Bottler · ciudad | Golden Stores (05) | Letras (06) |
    |---|---|---|
    | Bepensa · ZM Mérida | https://claude.ai/artifact/W5dGqa18ux9yws1UriJkzx | https://claude.ai/artifact/JGHg6YqT9oYVr5BJ5Vx2fn |
+   | Arca · ZM Guadalajara | https://claude.ai/artifact/PB7D5xmEtodZcPNCB3zxpd | https://claude.ai/artifact/2QEewJnoTgRVjmTy3R2FCr |
+   | FEMSA · CDMX | (crear al terminar la corrida) | (crear al terminar la corrida) |
 
    **Lineamientos de marca = skill `brand-guidelines-kin`** (usuario, 2026-10-01; instalada en `.claude/skills/brand-guidelines-kin/`,
    export del Kin Design System, que gana si hay conflicto). Los dos decks de Bepensa se rehicieron con ella el 2026-10-01 (portada
@@ -34,22 +43,36 @@ Para replicarlo en otra ciudad usa la skill `/nse-tiendas-mx` (en `.claude/skill
    Para crear o rehacer un deck: `.claude/skills/golden-stores-kin/references/claude_design_marca.md` y
    `scripts/marca_claude_design.py` (misma skill). Los colores de dato (HH/HL/LH/LL, semáforos) se conservan para cuadrar con mapas y Excel.
    Se escriben a mano con las cifras de los notebooks ejecutados (no se generan solos): si cambian las cifras, actualizar sus láminas.
+   Cifras: `uv run python .claude/skills/golden-stores-kin/scripts/cifras_decks.py <ciudad> <cliente>` (el deck Golden Stores del
+   usuario usa las letras del 06 sobre los PDV con venta y el semáforo PotentialQualitative; el perfil del hogar viene del Excel del 05).
+   Deck de un bottler nuevo: receta en `golden-stores-kin/references/claude_design_marca.md` ("Deck de un bottler nuevo").
    Figuras: recortar los PNG de `notebooks/ejecutados/merida/06_*.ipynb` y subirlos como asset del artifact.
+   **Sección "Mapa" del deck Golden Stores (usuario, 2026-10-02):** después de su lámina "Diccionario de datos" van "Mapa" (su lámina:
+   se conservaron su eyebrow y título; se agregó la figura numerada + lista editable), "Ficha de cada tienda" y "Diccionario 1-3 de 3"
+   (ids `7fb474c6`, `mapa-ficha`, `mapa-dicc-1..3`). Las figuras salen de `cliente/laminas/figuras/` (`laminas_mapa.py --pos 2720`).
+   Regla del usuario al editar decks: **"sin cambiar formato, solo actualiza datos"** y, al agregar láminas, **no tocar las demás**.
 5. **Estilo:** sin el signo **$** en presentaciones (Rappi va en pedidos/mes); nunca la frase "Let knowledge in"; URL `kinanalytics.com`
    en minúsculas; en el Excel ninguna celda queda vacía sin motivo ("no aplica · sin venta", "sin NSE (sin hogares a 300 m)", …);
    "la venta es la media" (no "promedio"); no inventar cifras ni fuentes.
 6. Commits solo cuando el usuario lo pide.
+7. **Bottler o ciudad nuevos (p. ej. "ahora femsa cdmx"):** primero `uv run python .claude/skills/golden-stores-kin/scripts/verificar_datos.py
+   <ciudad> <cliente>` y mostrar la tabla: obligatorios (CP, AltScore) que falten → detenerse y pedirlos; opcionales (Rappi,
+   Whisp) → decir cuáles vienen (los que vienen van en Excel, mapa y los dos decks). Ciudad sin configurar → `/nse-tiendas-mx`; CDMX:
+   la ZM del Valle de México es de 3 estados y `config.CIUDADES` es de uno solo → preguntar el alcance. **Al terminar la corrida se
+   crean los dos artifacts** "Golden Stores · Tradicional · <BOTTLER> <Ciudad>" y "Letras por PDV · <BOTTLER> <Ciudad>" y se registran
+   abajo. Pasos completos: sección "Bottler o ciudad nuevos" de la skill golden-stores-kin.
 
 **Pendientes de decisión del usuario** (no cambiar sin preguntar):
-- Letra 2: el PDV sin Rappi a 300 m (88%) empata en el rango medio (0.56) y por eso Rappi baja 185 letras y sube 43; cualquier Rappi
-  queda en el 12% de arriba. Opciones: rango neutro o score solo con venta y CP para quien no tiene Rappi.
+- Letra 2: el PDV sin Rappi a 300 m (91% en Mérida) empata en el rango medio (0.55) y por eso Rappi baja 198 letras y sube 65;
+  cualquier Rappi queda en el 9% de arriba. Opciones: rango neutro o score solo con venta y CP para quien no tiene Rappi.
 - AltScore: índice débil (α 0.47, 2 proxies) que mueve 447 Letras 1 con λ = 0.25.
-- Tiendas Rappi: hoy entran todas (221); el 00c dice que pasan las activas (106). Con solo activas cambian 16 Letras 2.
+- Tiendas Rappi: hoy entran todas (Mérida 172); el 00c dice que pasan las activas (89). Con solo activas cambian 69 Letras 2.
 - Índice del 04/05 vs ZM: la referencia es la ZM 2020 urbana (`nse_ageb`), pero los hogares son 2025 con rurales (A/B ≈ 94, D/E ≈ 107
   para una zona con la mezcla media). Validar Nielsen (1.ª letra en sueros) cuando el usuario comparta esas tiendas.
-- Share y prioridad P1–P4 (omitidos hasta que el usuario dé la fuente del share).
+- Share = **Whisp** (paso 07, 2026-10-05). Corte "alto" = share del hexágono ≥ share de toda el área (índice 100; elegido por el
+  usuario entre opciones) y productos = sueros + isotónicos (como su código). Validar si conviene solo sueros.
 
-**Problemas conocidos** (revisión del 2026-10-01; todo lo demás cuadra con las cifras de abajo): el DENUE vigente queda fijo en la copia
+**Problemas conocidos** (revisión del 2026-10-01; todo lo demás cuadra con las cifras de abajo):  el DENUE vigente queda fijo en la copia
 local (no avisa cuando salga la 11_2026, el 2026-11-25); el factor EIC 2020→2025 es parejo dentro de cada municipio; 110 hogares rurales
 sin geometría quedan fuera del 04 (0.03%); el 03 sigue con centroides de manzana (352,851 hogares) y sin rurales ni EIC.
 
@@ -73,19 +96,22 @@ src/deck_kin.py      estilo Kin para presentaciones (python-pptx) · src/excel_k
 src/py2nb.py         convierte notebooks/_src/*.py (celdas "# %%") → notebooks/*.ipynb
 notebooks/_src/*.py  FUENTE de los notebooks: edita aquí, luego regenera el .ipynb
 notebooks/01..03     pipeline de hogares y tiendas (correr en orden)
-notebooks/00, 00b, 00c, 04, 05, 06 cliente Bepensa (solo ZM Mérida): 00 valida ventas × CP · 00b EDA AltScore · 00c EDA Rappi (sueros e
-                     hidratación) · 04 perfil por PDV a ≤300 m · 05 Golden Stores (deck + Excel) · 06 letras del canal Tradicional
-                     (Letra 1 = NSE del clúster hexagonal + AltScore · Letra 2 = venta y CP del CP + Rappi)
-.claude/skills       nse-tiendas-mx (otra ciudad) · golden-stores-kin (cliente + deck, con scripts/instalar.py, qa_deck.py y
-                     marca_claude_design.py) · brand-guidelines-kin (marca Kin: logos, fuentes, colores, template de deck) ·
+notebooks/00, 00b, 00c, 04, 05, 06, 07 cliente de la ciudad (Mérida = Bepensa · Guadalajara = Arca): 00 valida ventas × CP (o
+                     00_cp_validacion: solo CP) · 00b EDA AltScore · 00c EDA Rappi (sueros e hidratación) · 04 perfil por PDV a ≤300 m ·
+                     05 Golden Stores (deck + Excel) · 07 share Coca-Cola de Whisp por hexágono res 6 (opcional; corre ANTES del 06) ·
+                     06 letras del canal Tradicional (Letra 1 = NSE del clúster + AltScore · Letra 2 = venta y CP + Rappi · prioridad)
+.claude/skills       nse-tiendas-mx (otra ciudad) · golden-stores-kin (cliente + deck, con scripts/instalar.py, qa_deck.py,
+                     marca_claude_design.py, laminas_mapa.py: láminas que explican el mapa y el diccionario, y cifras_decks.py: cifras de los decks) · brand-guidelines-kin (marca Kin: logos, fuentes, colores, template de deck) ·
                      executive-pitch-presentation-builder · retail-math-eda · archify
-data/raw/merida/bepensa/  todo lo de Mérida: ventas/ y cp/ del cliente + fuentes_oficiales/<institución>/<fuente>/ (se regeneran solas)
-                     (ciudad sin cliente: data/raw/<ciudad>/fuentes_oficiales/) · data/raw/rappi/rappi.csv: Rappi nacional (fuera de git)
+data/raw/<ciudad>/<cliente>/ cp/, enrichedgeodata/ (AltScore) y fuentes_oficiales/<institución>/<fuente>/ (se
+                     regeneran solas): merida/bepensa · guadalajara/arca (ciudad sin cliente: data/raw/<ciudad>/fuentes_oficiales/) ·
+                     data/raw/rappi/rappi.csv (Rappi nacional) y data/raw/whisp/Whisp.csv (Whisp, opcional), fuera de git
 data/processed/merida/bepensa/   intermedios (misma estructura ciudad → bottler; ciudad sin cliente: data/processed/<ciudad>/)
-outputs/merida/bepensa/          Excel de análisis y QA (00-04) y el mapa HTML de QA del 06
-outputs/merida/bepensa/cliente/  SOLO lo que se entrega al cliente: 05 (deck + Excel Golden Stores) y 06 (Excel de letras del canal
-                                 Tradicional + su presentación); versiones viejas en anteriores/ (crearla al guardar una)
-docs/flujo_pipeline.*            flujograma del pipeline 00 → 06 (skill archify: .dataflow.json → .html con validate, deliver y
+outputs/merida/bepensa/          Excel de análisis y QA (00-04) y el mapa HTML del 06 (06_mapa_qa_letras_*.html; en pantalla ya no dice "QA")
+outputs/merida/bepensa/cliente/  SOLO lo que se entrega al cliente: 05 (deck + Excel Golden Stores) y 06 (Excel de letras completo,
+                                 reducido, diccionario y entregable final + su presentación); laminas/ (PNG 1920×1080 que explican el
+                                 mapa y el diccionario + figuras/ para Claude Design, de laminas_mapa.py); versiones viejas en anteriores/
+docs/flujo_pipeline.*            flujograma del pipeline 00 → 07 (skill archify: .dataflow.json → .html con validate, deliver y
                                  visual-check); el anterior (solo 01-03) en docs/anteriores/. Se actualiza cuando cambia el flujo
 qa/                  QA contra la línea base de Nielsen: `qa/_src/qa_linea_base_nielsen.py` (fuente) → `qa/qa_linea_base_nielsen.ipynb`;
                      línea base `qa/Golden Stores Sueros R.Sur - KO FY'23.xlsx` (fuera de git, *.xlsx); salida en `qa/salidas/`
@@ -97,14 +123,15 @@ pyproject.toml · uv.lock · .python-version   proyecto uv (Python 3.14, entorno
 uv sync                                      # crea/actualiza .venv con uv.lock (una vez por máquina; uv.lock va en git)
 uv run python -m ipykernel install --user --name mx-retail-geodemographics --display-name "Python (mx-retail-geodemographics · uv .venv)"
 uv run python src/correr.py merida guadalajara     # regenera los .ipynb desde _src y corre 01 → 02 → 03 por ciudad
-uv run python src/correr.py --pasos 00,00b,00c,01,02,03,04,05,06 merida   # Bepensa completo (≈ 5 min en paralelo)
+uv run python src/correr.py --pasos 00,00b,00c,01,02,03,04,05,07,06 merida   # Bepensa completo (≈ 7 min en paralelo)
+uv run python src/correr.py --pasos 00,00b,00c,01,02,03,04,05,07,06 guadalajara   # Arca (≈ 40 min; proceso aparte con log)
 ```
-Orden para Bepensa: **00 → 00b → 00c → 01 → 02 → 03 → 04 → 05 → 06** (00, 00b y 00c no dependen de nadie; 04 ← 00, 00b, 01, 02;
-05 ← 00, 04; 06 ← 00, 00b, 00c, 01, 04). Los notebooks también se pueden abrir y correr a mano en VS Code/Jupyter con el kernel
+Orden por ciudad con cliente: **00 → 00b → 00c → 01 → 02 → 03 → 04 → 05 → 07 → 06** (00, 00b y 00c no dependen de nadie; 04 ← 00,
+00b, 01, 02; 05 ← 00, 04; 07 ← 00; 06 ← 00, 00b, 00c, 01, 04, 07). Comando: `uv run python src/correr.py --pasos 00,00b,00c,01,02,03,04,05,07,06 <ciudad>`. Los notebooks también se pueden abrir y correr a mano en VS Code/Jupyter con el kernel
 **"Python (mx-retail-geodemographics · uv .venv)"** (o el intérprete `.venv`): buscan la raíz del repo solos, usan Mérida por
 defecto y avisan qué notebook correr si falta un archivo previo. Todo lo aleatorio usa semilla fija (`eda.SEMILLA`): dos corridas dan lo mismo.
 `jupyter nbconvert` NO está instalado en esta máquina: `src/correr.py` usa nbclient directo y corre **en paralelo** lo que sus
-dependencias permiten (nivel 1: 00, 00b, 00c, 01, 02 · nivel 2: 03, 04 · nivel 3: 05, 06; `--secuencial` para depurar). Las descargas y
+dependencias permiten (nivel 1: 00, 00b, 00c, 01, 02 · nivel 2: 03, 04, 07 · nivel 3: 05, 06; `--secuencial` para depurar). Las descargas y
 extracciones tienen candado entre procesos. Tiempos (2026-09-30, flujo Bepensa completo en 276 s): 00 ≈ 0.5 min, 00b ≈ 1.2 min,
 00c ≈ 0.7 min (lee el CSV nacional de Rappi, 769 MB), 01 ≈ 1.1 min, 02 ≈ 2.2 min, 04 ≈ 1.5 min, 05 ≈ 20 s, 06 ≈ 50 s (con mapa, Excel
 y deck); Guadalajara ≈ 18 min (lo domina el IPU del 01).
@@ -151,8 +178,9 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
   No se usan los hogares EIC directamente: en la EIC hogar = vivienda e implican una caída de tamaño del hogar de ~10% en 5 años.
 
 ### Bepensa (ZM Mérida, notebooks 00 y 04)
-- Llave: empata 73.3% de los registros de ventas (azar 3.7%); en prefijos de la ZM quedan sin ubicar 30.9% de las cajas (pocas cuentas grandes).
-- 7,455 PDV del CP en la ZM, 5,978 con venta. Mediana 2.07 cajas/mes de vida; Gini 0.58; KM S(12 m) = 0.86.
+- (Histórico, con el archivo de ventas que ya no se usa) Llave: empata 73.3% de los registros de ventas (azar 3.7%); en prefijos de la ZM quedan sin ubicar 30.9% de las cajas (pocas cuentas grandes).
+- 7,455 PDV del CP en la ZM, 5,978 con venta. (Histórico, con el archivo de ventas: mediana 2.07 cajas/mes de vida; Gini 0.58; KM S(12 m) = 0.86.)
+  Desde 2026-10-05 Mérida corre `00_cp_validacion` (sin ventas): mismas 7,455 PDV, letras, prioridades y clústeres del 05 que con ventas.
 - 04: hogares por **área de manzana** (no centroide) + rurales, actualizados a 2025: 403,069 hogares. Mediana 18 hexágonos por área (≈ 0.27 km²);
   53 PDV sin hogares a ≤ 300 m (con centroides eran 576). Moran I = 0.058 (p = 0.005); 83 asociaciones robustas de 90 (entran las señales AltScore).
   AltScore por buffer (media de los puntos AltScore a ≤ 300 m del PDV): 94% de los PDV con índice (mediana 25 puntos); vs % A/B + C+
@@ -172,12 +200,17 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
 
 ### Rappi (notebook 00c, `data/raw/rappi/rappi.csv`, nacional: 864,704 líneas)
 - ZM Mérida (polígono): 29,785 líneas; la etiqueta `city` ("Merida"/"Mérida") coincide 100% con el polígono (4 líneas sin coordenadas).
-- Regla "sueros primero" en la ventana: 26,876 líneas, 21,947 pedidos, $1.35 M MXN; sale Vitamin Water (agua funcional).
-  Sueros 31% de la venta, isotónicos 69%. Coca-Cola (sistema Bepensa: Powerade, Flashlyte) 48% del valor (sueros 22%, isotónicos 59%).
+- **Sin BRAND_x (usuario, 2026-10-05: "no tomes en rappi lo que dice BRAND_x"):** el 00c quita al leer las líneas con marca
+  anonimizada `BRAND_####` (`config.RAPPI_EXCLUIR_MARCA`): 488,683 de 864,704 líneas nacionales (56.5%; 58% del importe). Son casi todos
+  los competidores (solo quedan 121 líneas "No disponible", ninguna en Mérida ni Guadalajara): Rappi queda **solo Coca-Cola** y las
+  comparaciones contra competidores del EDA (duplicados, faltantes, precio, canasta, participación) dicen "no aplica".
+- Mérida en la ventana: 13,130 líneas; sueros 14% de la venta, isotónicos 86% (Powerade 86% · Flashlyte 14% · Vitamin Water < 1%).
+  (Antes, con competidores: 26,876 líneas, Coca-Cola 48% del valor.)
 - **Cobertura:** oct-dic 2024 sin cadena ni vertical y sin BRAND_4866 (20% de la venta nacional) → ventana ene-2025 → ago-2026.
   `datetime` dice "Z" pero es hora local (1-6 h: 0.1% vs 25% si fuera UTC). Crecimiento ene-ago 2026 vs 2025: +3.6% (IC95 −6.3% a +15.1%).
-- 555 store_id → 221 tiendas físicas (≤ 25 m); 106 activas (≥ 12 pedidos, 94% de la venta), 72 activas en sueros; 2 Turbo = 33% de la venta.
-  Duplicados exactos: Coca-Cola 0.9% (base) vs competidores 19.4% (anonimizados a nivel marca): se conservan.
+- 453 store_id → 172 tiendas físicas (≤ 25 m; con BRAND_x eran 221); 89 activas (≥ 12 pedidos, 92% de la venta), 20 activas en sueros;
+  2 Turbo = 41% de la venta. Duplicados exactos Coca-Cola 0.9%: se conservan.
+- Guadalajara: 1,544 store_id → 594 tiendas físicas, 259 activas (89% de la venta); sueros 15% · isotónicos 84%; 23 Turbo = 59%.
 
 ### Letras (notebook 06: canal Tradicional y solo datos del CP; reglas del usuario del 2026-09-30, pendiente validar λ)
 - CP en la ZM: 7,455 PDV → se quitan 418 Moderno (Modelorama 148, farmacias de cadena…) → 7,037 Tradicional; 5,607 con venta según el CP
@@ -191,13 +224,14 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
   directa. λ = 0.25 → cambia 447 Letras 1 (299 ↑, 148 ↓; 8%); λ = 0.5 → 974; λ = 1 → 1,827 (κ con el Censo 0.76 · 0.62 · 0.32).
 - Letra 1 = H en 48% (sin AltScore 46%); confirmada por el Censo en 88% (solo INEGI 91%); κ de la letra INEGI con ABC+ 0.93, Censo 0.83,
   buffer del propio PDV 0.95, buffers de 200/400 m 0.96/0.97, AltScore solo 0.26, hogares (sin NSE) 0.22.
-- Letra 2 = score de rangos (usuario, 2026-09-30): H en 29.1% de los objetivo (sin Rappi 31.7%). Venta del CP (sueros) mediana 2.57 cajas/mes;
-  CP con decimales mediana 0.17, 19% en 0 (redondeado quedaba 79%); ρ(venta, CP) = +0.22. Rappi del buffer: 221 tiendas (106 activas),
-  643 PDV objetivo (11.6%) con alguna a ≤ 300 m; el 88% sin Rappi empata en el rango 0.56. Rappi (solo sueros Coca-Cola) cambia 228 letras (43 ↑, **185 ↓**: el
-  rango medio de "sin Rappi" baja a quien estaba cerca del corte). Misma letra: sin CP 81%, CP redondeado 88%, pesos 1·1·1 97%, corte
-  0.35 / 0.45 94% / 93%, solo tiendas activas 99.7%, suma en vez de media 100%, empates en el peor rango 90%. Venta con vs sin Rappi: δ = −0.01.
-- Letras finales (corrida del 2026-10-01): HH 786 (14% de tiendas, 23% de la venta, índice 161) · HL 1,903 (24%) · LH 834 (25%) · LL 2,043
-  (28%); 88% igual a las letras
+- Letra 2 = score de rangos (usuario, 2026-09-30; corrida del 2026-10-05 con Rappi = hidratación Coca-Cola sin BRAND_x): H en 29.3% de
+  los objetivo (sin Rappi 31.7%). Venta del CP (sueros) mediana 2.57 cajas/mes; CP con decimales mediana 0.17, 19% en 0 (redondeado
+  quedaba 79%); ρ(venta, CP) = +0.22. Rappi del buffer: 172 tiendas (89 activas), 505 PDV objetivo (9.1%) con alguna a ≤ 300 m; el 91%
+  sin Rappi empata en el rango 0.55. Rappi cambia 263 letras (65 ↑, **198 ↓**: el rango medio de "sin Rappi" baja a quien estaba cerca
+  del corte). Misma letra: sin CP 80%, CP redondeado 88%, pesos 1·1·1 96%, corte 0.35 / 0.45 94% / 93%, solo tiendas activas 98.8%
+  (cambian 69), sin Turbo 100%, empates en el peor rango 90%.
+- Letras finales (corrida del 2026-10-05): HH 799 (14% de tiendas, 23% de la venta, índice 160) · HL 1,890 (24%) · LH 830 (25%) · LL 2,047
+  (28%); prioridad por letras (Whisp sin datos para Mérida): P1 799 · P2 2,684 · P3 830 · P4 2,671 (53 sin NSE); 88% igual a las letras
   base (solo INEGI + CP). Los 1,418 PDV sin venta con NSE quedan L en la Letra 2. Excel de 16 hojas (con "Vector Letra 2"); deck de 14 láminas;
   tabla intermedia en `data/processed/merida/bepensa/letra2_vector_bepensa_zm_merida.parquet`.
 
@@ -213,8 +247,19 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
   cadena a ≤ 200 m anticipa su 2.ª letra: AUC 0.88 [0.63, 1.00] en 39 tiendas.
 
 ### Guadalajara (10 municipios Metrópolis 2020, región Pacífico, ENIGH 01·06·14·16·18)
-- **Sin datos de cliente: el trabajo con Bepensa es solo Mérida.** Estas cifras son de la corrida con MG 2025 y sin rurales ni Intercensal;
-  no se re-corrió con las fuentes de 2026-09-25 (se hará solo si llega un cliente en Guadalajara).
+- **Cliente Arca (desde 2026-10-05; CP `cp_arca_mex_sueros_202609.csv` + AltScore, sin archivo de ventas → `00_cp_validacion`).**
+  Corrida del 2026-10-05:
+  - 05 Tradicional: 24,525 tiendas · HH 3,501 (14%, 24% de la venta, índice 171) · HL 8,468 · LH 5,029 (40% de la venta) · LL 7,527;
+    P1 = 6,978 tiendas (58% de la venta; 58,260 cajas/mes). Venta del canal 100,507 cajas/mes. Ojo: el CP de Arca solo marca 50 Moderno
+    (los nombres de cadena de `cadenas.py` casi no aparecen).
+  - 06: 39,186 PDV Tradicional, 24,548 objetivo; L1 H 48% (AltScore cambia 2,786); L2 H 30.1% (Rappi cambia 1,274: 387 ↑ / 887 ↓);
+    letras HH 3,669 · HL 8,102 · LH 3,710 · LL 9,067; 84% igual a las letras base. Rappi: 594 tiendas físicas (259 activas), 3,591 PDV
+    objetivo (14.6%) con Rappi a 300 m. Prioridad con Whisp (Letra 1 × share): P1 12,600 · P2 7,230 · P3 9,379 · P4 9,858
+    (38,289 por Whisp, 778 por letras sin venta Whisp en su hexágono, 119 sin NSE).
+  - 07 Whisp: 54 de 91 hexágonos res 6 con venta; share KO del área 26.7% (isotónicos 52.8% · sueros 3.2%; Pisa 93% de sueros);
+    33 hexágonos con share alto.
+- Cifras de abajo (INEGI y DENUE) de la corrida con MG 2025 y sin rurales ni Intercensal; el 01-04 de Arca ya corrió con las fuentes
+  de 2026-09-25 pero sus cifras de INEGI no se han copiado aquí.
 - ENIGH: NSE imputado vs real en Jalisco urbano, diferencia ≤ 1.3 pp por nivel (8,547 hogares ENIGH).
 - 2,000 AGEB urbanas, 1,443,184 hogares, 40,799 donantes (15,452 patrones de ceros).
 - Con MG 2025: 56,316 manzanas; 207 sin polígono (1,587 hogares, 0.11%).
@@ -233,7 +278,7 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
 - El índice se calcula contra el total de la ZM (`REFERENCIA_INDICE="zm"`). La alternativa es `"estado"`.
 - **Bepensa = ZM Mérida** (`CLIENTE_CIUDAD`). Área de cada PDV: hexágonos H3 res 10 con centro a **≤ 300 m** (`RADIO_PDV_M`); 500 m es demasiado lejos.
 - No calificar la ZM ni por demografía agregada: la unidad de análisis es el PDV con su venta.
-- Llave ventas ↔ CP **inferida**: `pos_id` de ventas = prefijo de 4 dígitos (centro de distribución) + `pos_id` del CP a 6 dígitos (pendiente de confirmar con Bepensa).
+- (Histórico) Llave ventas ↔ CP **inferida**: `pos_id` de ventas = prefijo de 4 dígitos (centro de distribución) + `pos_id` del CP a 6 dígitos (pendiente de confirmar con Bepensa).
 - Señales del CP: `PotentialQuantitative` y `size_class` son fuga (derivan de la venta); el potencial útil es `PotentialQuantitativeFinal`.
   **En el 06 (usuario, 2026-09-30) la venta SALE DEL CP:** `PotentialQuantitative_TotalPortafolio` es la venta media (ya no se usa el
   archivo de ventas en las letras) y el CP es `PotentialQuantitativeFinal_TotalPortafolio` **con decimales** (usuario, 2026-09-30: "0.6
@@ -262,7 +307,9 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
 - Cadenas: Six = Tradicional; Modelorama y farmacias de cadena = Moderno (`src/cadenas.py`).
 - **Rappi: el proyecto es sueros e hidratación.** Solo la ciudad activa; si una línea viene con otros productos, lo que importa es que
   tenga **sueros o sus derivados** (regla "sueros primero", `rappi.clasificar`): sueros = "Hidratantes Líquidos", derivados = "Isotónicos
-  Líquidos"; lo genérico o "No disponible" se asigna por marca o nombre; sale solo lo que no es suero (Vitamin Water, refrescos).
+  Líquidos"; lo genérico o "No disponible" se asigna por marca o nombre. **Las líneas con marca `BRAND_x` no se toman** (usuario,
+  2026-10-05; competidores anonimizados): el universo Rappi (tiendas físicas, activas, EDA y Rappi de la Letra 2) es solo Coca-Cola. **Vitamin Water entra** (subcategoría "Agua funcional (Vitamin
+  Water)", usuario 2026-10-05; antes se excluía); sale solo lo que no es hidratación (refrescos, agua sola).
 - **Letras (06), reglas del usuario del 2026-09-30:** **solo canal Tradicional y solo datos del CP** para el PDV ("elimina todo lo de
   moderno y usa solo datos de cp": sin PDV, Excel, filtro ni textos Moderno; nada del archivo de ventas, ni la comparación con el 05).
   **Letra 1 = NSE del clúster NSE:** hexágono H3 res 9 (`NSE_CLUSTER_RES`; "mejor hexágonos que centroides de AGEB, más simple en
@@ -273,8 +320,9 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
   **pedidos, no pesos**: usuario, 2026-10-01). En las presentaciones **no se usa el signo $** (usuario, 2026-10-01).
   **Guiado por el CP (usuario, 2026-10-01):** la categoría del cliente es **sueros** (`CustomCat_sueros`; Nielsen "T. Sueros" vs
   "Electrolit + Suerox"): venta media, potencial y clase salen de las columnas `*_CustomCat_sueros` (`config.CP_CATEGORIA`; antes
-  `_TotalPortafolio`, que solo coincide en 81.5% de los PDV) y Rappi cuenta **solo sueros Coca-Cola** (Flashlyte;
-  `config.RAPPI_FABRICANTE` y `RAPPI_SUBCATEGORIAS_L2`): Powerade (isotónico) y los competidores quedan fuera. Trazabilidad de los
+  `_TotalPortafolio`, que solo coincide en 81.5% de los PDV) y Rappi cuenta la **hidratación Coca-Cola: Powerade, Flashlyte,
+  Glacéau Vitamin Water y Vitamin Water** (usuario, 2026-10-05: "en todos los casos"; `config.RAPPI_MARCAS_L2`, cualquier subcategoría;
+  antes solo Flashlyte). Los competidores quedan fuera. Trazabilidad de los
   productos tomados y excluidos: `outputs/merida/bepensa/06_rappi_productos_tomados_bepensa_zm_merida.xlsx`. Cada variable
   pasa a su **pct_rank descendente** entre los PDV Tradicional **con venta** (0 = el que más vende; empates con rango medio) y el **score**
   = media ponderada con **pesos venta 2 · CP 2 · Rappi 1** (`LETRA2_PESOS`); **H si score < 0.4** (`LETRA2_CORTE`), si no L. **El PDV
@@ -286,9 +334,42 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
 - **Clústeres (usuario, 2026-09-30):** el punto NSE es un clúster y su radio es un buffer; hoy hay dos: el **clúster NSE** (hexágono H3
   res 9 + buffer de 300 m desde su centro; da la Letra 1 a todos sus PDV) y el **buffer de 300 m de cada PDV** (de ahí sale su Rappi
   para la Letra 2). **HH/HL/LH/LL no se llaman "clúster"** en el 06 (son letras) y **conservan su acción Golden Stores** (no quitarla).
-- **Share y prioridad: omitidos por ahora** (usuario, 2026-09-30). Su tabla: Prioridad = Letra 1 × Share (la Letra 2 no la cambia):
-  P1 = NSE alto + share bajo (la prioridad) · P2 = NSE alto + share alto · P3 = NSE bajo + share bajo · P4 = NSE bajo + share alto.
-  El share aún no se calcula: no inventar fuente ni corte; se agrega cuando el usuario lo pida.
+- **Prioridad con Whisp (usuario, 2026-10-05, paso 07):** si Whisp tiene datos para el área, **prioridad = Letra 1 × share de
+  Coca-Cola** (H bajo P1 · H alto P2 · L bajo P3 · L alto P4; la Letra 2 no la cambia; `letras.PRIORIDAD_SHARE`). Share = cajas unidad
+  `COCA-COLA COMPANY` / total del hexágono H3 res 6 (sueros + isotónicos, `WHISP_VENTANA` 202508–202608); alto si ≥ share del área.
+  Sin Whisp para el área (Mérida) o sin ventas en el hexágono del PDV → prioridad por letras (abajo); la columna "Fuente de la
+  prioridad" lo dice.
+  **Datos opcionales (usuario, 2026-10-05): si vienen, van en todo** — Excel, mapa (paso "4. Prioridad: Letra 1 × share Whisp" con
+  la capa `wh_share` de hexágonos res 6 y la capa `pdv_prio` P1–P4; sin Whisp el paso 4 es "Prioridad por letras") y los dos decks
+  (Letras: lámina `prioridad`; Golden Stores: lámina `prio-whisp` con la tabla Letra 1 × Letra 2 × share de 8 tiendas reales).
+  El 07 guarda `share_area` en su parquet para el texto del mapa. El 07 escribe `whisp_share_<cliente>_<zm>.parquet` y `07_whisp_share_*.xlsx` (hojas Resumen · Share por hexágono con Región,
+  SubTerritorio principal y todos, Segmento y share KO por categoría · Fabricantes por Categoría · Categorías × Segmento; usuario, 2026-10-05); el 06 lo lee (Excel completo y
+  reducido con share, share alto/bajo y fuente; mapa y deck).
+- **Prioridad por letras en el 06 (usuario, 2026-10-02): primero la demanda (Letra 1, NSE) y después la venta (Letra 2):
+  HH = P1 · HL = P2 · LH = P3 · LL = P4** (`letras.PRIORIDAD`; sale solo de las letras: el PDV sin venta también la tiene, solo el PDV sin NSE no). Va en el Excel
+  (columna Prioridad y hoja Resumen), el mapa HTML y el deck; el Excel del 05 lleva también "Prioridad (letras)" y pone la demanda
+  antes que la venta en columnas, textos y láminas (1.ª letra = demanda, 2.ª = venta; HL Bloquear, LH Fortalecer). Reemplaza la tabla anterior Letra 1 × Share. **El share sigue omitido**:
+  no inventar fuente ni corte. El P1 del 05 (HH y LH en verde y amarillo, Golden Stores) es otra regla y no cambió.
+- **Entregable final (usuario, 2026-10-02):** `cliente/06_entregable_final_letras_bepensa_zm_merida.xlsx`, lo escribe el 06. Una fila por
+  PDV Tradicional (7,037) y 9 columnas en este orden: `pos_id, lat, lon, PotentialQuantitative_TotalPortafolio,
+  PotentialQuantitativeFinal_TotalPortafolio, PotentialQualitative_TotalPortafolio` (tal cual del CP) + `segmento_golden_store` (letras
+  finales), `prioridad` (P1–P4 por letras) y `accion` (Golden Stores). El CP viene vacío en los 1,430 PDV sin venta → "sin dato en el
+  CP (PDV sin venta)". Ojo: las letras se calculan con las columnas de sueros (`CP_CATEGORIA`), pero el formato pide las de TotalPortafolio.
+- **Excel reducido (usuario, 2026-10-02):** `cliente/06_letras_nse_ventas_tradicional_reducido_bepensa_zm_merida.xlsx` (lo escribe el 06):
+  las columnas de la ficha del PDV del mapa HTML (`POPUP["pdv"]`, función `ficha_pdv`) para los 7,037 PDV Tradicional y al final Letras
+  base (INEGI + CP) · Letras (final) · Acción Golden Stores · Prioridad (43 columnas con Share KO Whisp, share alto/bajo y fuente de la
+  prioridad). **Ninguna celda vacía** en el Excel completo ni en el reducido (2026-10-05): `tabla_pdv` pone el motivo de cada faltante
+  ("no aplica · sin venta", "sin NSE (sin hogares a 300 m)", "fuera de AGEB urbana", "sin dato AltScore en el buffer del clúster"…).
+- **Mapa HTML con marca Kin (2026-10-02):** `src/mapas.py` toma de la skill brand-guidelines-kin los tokens, las fuentes (base64) y el logo
+  IV_19 / favicon S_14 (`_marca()`); panel con encabezado oscuro, pasos numerados con anterior/siguiente y flechas, filtro en chips,
+  búsqueda con Enter/Esc, leyenda flotante abajo a la derecha y ficha con chips de letras, prioridad y acción; el PDV elegido lleva
+  anillo amarillo. **Sin "QA" en pantalla** (usuario, 2026-10-02): eyebrow "Mapa interactivo", título "Letras por punto de venta · canal
+  Tradicional", sección "Pasos" (el archivo conserva el nombre `06_mapa_qa_letras_*.html`). Probado en el navegador (1440×900, sin
+  errores JS). Para verlo: `.claude/launch.json` → servidor `mapa-qa` (puerto 8765).
+- **Láminas del mapa (2026-10-02):** `uv run python .claude/skills/golden-stores-kin/scripts/laminas_mapa.py [--pos 2720]` captura el
+  mapa con Chrome sin interfaz (los números los dibuja el propio mapa; sin fondo de calles porque no hay WebGL) y arma 5 PNG con marca
+  Kin en `cliente/laminas/` + `figuras/`: cómo leer el mapa (8 elementos), la ficha del PDV (7 secciones) y el diccionario (3 partes,
+  desde `06_diccionario_letras_*.xlsx`). Si cambian columnas o reglas, correr el 06 y luego este script.
 - **Entregable de letras (formato del usuario, 2026-09-30):** un solo Excel del canal Tradicional: `pos_id | AltScore (índice + señales)
   | datos gubernamentales (INEGI) | ventas (venta media, CP, Rappi del buffer, rangos y score) | clúster NSE | letra 1 |
   letra 2` (+ Letra 1 sin y con AltScore, Letra 2 sin y con Rappi con "… cambia la letra", letras base y finales, % bajo / medio / alto y

@@ -43,11 +43,15 @@ for e in ESTADOS:
     destino = BASE / "data" / "raw" / f"qasur_{e}" / "fuentes_oficiales" / "INEGI"
     for carpeta in NACIONALES:
         src_, dst_ = MERIDA / carpeta, destino / carpeta
-        if src_.exists() and not any(dst_.glob("*.zip")):
+        if src_.exists():
             dst_.mkdir(parents=True, exist_ok=True)
-            for f in src_.iterdir():                     # el zip y su descarga.json (lo extraido se rehace solo)
+            for f in src_.iterdir():
+                if (dst_ / f.name).exists():
+                    continue                     # el zip, su descarga.json y lo ya extraido (no se descomprime 15 veces)
                 if f.is_file():
                     shutil.copy2(f, dst_ / f.name)
+                elif f.is_dir() and ".tmp" not in f.name:
+                    shutil.copytree(f, dst_ / f.name, dirs_exist_ok=True)
     env = {**os.environ, "CIUDAD": f"qasur_{e}", "PYTHONIOENCODING": "utf-8"}
     r = subprocess.run([sys.executable, "-c", HIJO, str(BASE)], env=env, capture_output=True, text=True, encoding="utf-8")
     print(r.stdout.strip().splitlines()[-1] if r.returncode == 0 else f"{e}: FALLO\n{r.stderr[-1500:]}", flush=True)

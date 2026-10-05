@@ -24,9 +24,9 @@
 # **2. Panorama por clúster:** # tiendas (%), % mix de ventas, índice de ventas (promedio del clúster / promedio total × 100),
 # perfil de hogares (tamaño, niños, edad del jefe, NSE: % e índice vs ZM), mix por municipio y subcanal, clase CP.
 #
-# **3. Semáforos por clúster** (individualizados, con desviación estándar dentro de cada clúster; venta y demanda en log
-# por su cola pesada, así los dos ejes quedan en la misma escala): **verde** = venta y demanda sobre el promedio del clúster; **rojo** = ambas bajo el promedio;
-# **amarillo** = alrededor de los promedios (|z| ≤ 0.5 en ambas, #2) o subdesarrollo en una (#1 alta venta / demanda baja,
+# **3. Semáforos por clúster** (individualizados, con desviación estándar dentro de cada clúster; demanda y venta en log
+# por su cola pesada, así los dos ejes quedan en la misma escala): **verde** = demanda y venta sobre el promedio del clúster; **rojo** = ambas bajo el promedio;
+# **amarillo** = alrededor de los promedios (|z| ≤ 0.5 en ambas, #2) o subdesarrollo en una (#1 demanda baja / venta alta,
 # #3 demanda alta / venta menor).
 #
 # **4. Priorización P1:** capitalizar los clústeres de alta venta **HH y LH** con semáforo **verde y amarillo**.
@@ -79,6 +79,7 @@ pd.set_option("display.width", 220, "display.max_columns", 30, "display.float_fo
 
 CLUSTERS = ["HH", "HL", "LH", "LL"]
 ACCION = {"HH": "Atacar", "HL": "Bloquear", "LH": "Fortalecer", "LL": "Mantener"}
+PRIORIDAD = {"HH": "P1", "HL": "P2", "LH": "P3", "LL": "P4"}   # por letras (usuario, 2026-10-02): primero la demanda, luego la venta
 NOMBRE = {"HH": "Alta demanda / Alta venta", "HL": "Alta demanda / Baja venta", "LH": "Baja demanda / Alta venta", "LL": "Baja demanda / Baja venta"}
 ACCIONABLES = {"HH": ["Más SOS", "Exhibiciones", "Special packs", "Ítems exclusivos", "Reducciones de precio", "Comunicación", "Promoción"],
                "HL": ["Evitar desarrollo de competencia", "Estrategia reactiva", "Seguir estrategias de precio", "Cuidar anaquel (SOS)"],
@@ -127,8 +128,8 @@ def golden_stores(canal: str):
     alrededor = (zv.abs() <= 0.5) & (zd.abs() <= 0.5)
     b["semaforo"] = np.select([alrededor, (zv > 0) & (zd > 0), (zv < 0) & (zd < 0)], ["amarillo", "verde", "rojo"], "amarillo")
     b["semaforo_detalle"] = np.select([alrededor, (zv > 0) & (zd > 0), (zv < 0) & (zd < 0), zv > 0],
-                                      ["#2 alrededor de la media", "alta venta y alta demanda", "baja venta y baja demanda",
-                                       "#1 alta venta / demanda baja"], "#3 demanda alta / venta menor")
+                                      ["#2 alrededor de la media", "alta demanda y alta venta", "baja demanda y baja venta",
+                                       "#1 demanda baja / venta alta"], "#3 demanda alta / venta menor")
     b["frontera"] = ((b.indice_demanda - 100).abs() <= 10) | ((b.indice_venta - 100).abs() <= 10)
     b["brecha_relativa"] = b.pos_id_cp.map(pdv0[f"PotentialEstimatedToCover_{C.CP_CATEGORIA}"])
     media = b["Venta media (cajas/mes)"].mean()
@@ -332,7 +333,7 @@ def deck(canal, b, pan, pct, indice, sem):
     prs = K.nueva()
     s = K.portada(prs, ["Golden Stores"], f"Sueros · Canal {canal} · {C.ZM_NOMBRE}",
                   f"{p1_n:,} tiendas concentran el {p1_mix:.0f}% de la venta: dónde actuar primero y cómo medirlo.",
-                  "Bepensa · Octubre 2026")
+                  f"{C.CLIENTE_NOMBRE} · Octubre 2026")
     K.notas(s, "Presentación para decidir en qué tiendas del canal Tradicional actuar primero. La recomendación va en la siguiente lámina.")
 
     # 1 · BLUF: resumen ejecutivo y la decisión
@@ -351,9 +352,9 @@ def deck(canal, b, pan, pct, indice, sem):
         K.cifra(s, K.MARGEN + i * 2.3, y + 0.05, 2.15, v, e, dd, h=1.1, oscura=(i == 0))
     K.tarjeta(s, K.MARGEN, y + 1.35, 9.1, 1.35, "Decisión que pedimos hoy",
               f"1. Piloto de 90 días en {rec_corto} ({n_pil:,} tiendas) sorteado por zonas: mitad Atacar, mitad control (detecta desde {mde0:.0%}).\n"
-              "2. Que Bepensa entregue un nuevo corte del CP al cierre del piloto para medir piloto vs control.\n"
+              f"2. Que {C.CLIENTE_NOMBRE} entregue un nuevo corte del CP al cierre del piloto para medir piloto vs control.\n"
               f"3. Revisar con el equipo las {p1_front:,} tiendas P1 a ±10 puntos del umbral (columna Frontera del Excel) antes de rutear.", acento=True)
-    K.mensaje(s, "Fundamento: venta media de sueros del CP de Bepensa × hogares 2025 a 300 m de cada tienda, con la metodología Golden Stores.")
+    K.mensaje(s, f"Fundamento: venta media de sueros del CP de {C.CLIENTE_NOMBRE} × hogares 2025 a 300 m de cada tienda, con la metodología Golden Stores.")
 
     # 2 · por qué ahora: la venta está concentrada (la brecha HL vs HH sale de la definición del clúster: no se usa)
     s, y = K.lamina(prs, f"HH + LH son el {hh_['% tiendas'] + lh_['% tiendas']:.0f}% de las tiendas y hacen el "
@@ -374,26 +375,26 @@ def deck(canal, b, pan, pct, indice, sem):
 
     K.notas(K.separador(prs, "La solución", "Golden Stores"), "Metodología NielsenIQ | Spectra aplicada tal cual: dos variables, cuatro clústeres, accionables y semáforos.")
 
-    s, y = K.lamina(prs, "Cada tienda se mide con dos números: lo que vende y la demanda que tiene a 300 m.", "Metodología",
-                    notas="Variable 1 es la venta media de sueros que trae el Customer Potential (CP) de Bepensa; el archivo de ventas ya no se usa. Variable 2 es la demanda potencial del área transaccional, construida en el 04: Censo 2020 por manzana y localidades rurales, microsimulación, reparto por área en hexágonos H3 y actualización a 2025 con la Encuesta Intercensal 2025 (INEGI, sep-2026).")
-    K.tarjeta(s, K.MARGEN, y + 0.1, 4.45, 2.5, "1 · Ventas de la tienda",
-              "Venta media de sueros (cajas/mes) del Customer Potential de Bepensa (PotentialQuantitative, categoría sueros).\n"
-              "Índice de ventas = venta media de la tienda / media de su subcanal × 100.", oscura=True)
-    K.tarjeta(s, K.MARGEN + 4.6, y + 0.1, 4.45, 2.5, "2 · Demanda potencial",
+    s, y = K.lamina(prs, "Cada tienda se mide con dos números: la demanda que tiene a 300 m y lo que vende.", "Metodología",
+                    notas=f"Variable 2 es la venta media de sueros que trae el Customer Potential (CP) de {C.CLIENTE_NOMBRE}; el archivo de ventas ya no se usa. Variable 1 es la demanda potencial del área transaccional, construida en el 04: Censo 2020 por manzana y localidades rurales, microsimulación, reparto por área en hexágonos H3 y actualización a 2025 con la Encuesta Intercensal 2025 (INEGI, sep-2026).")
+    K.tarjeta(s, K.MARGEN, y + 0.1, 4.45, 2.5, "1 · Demanda potencial (1.ª letra)",
               f"Con base en su área transaccional: hogares 2025 a ≤ {C.RADIO_PDV_M} m (manzanas urbanas y localidades rurales repartidas por área) "
               "con su perfil por tamaño, niños, edad del jefe y NSE AMAI 2024, más competidores DENUE.\n"
-              "Índice de demanda = hogares del área / media de su subcanal × 100.", acento=True)
-    K.mensaje(s, f"Ejemplo: {e0.Nombre.title()} vende {e0['Venta media (cajas/mes)']:.1f} cajas/mes (índice {e0.indice_venta:.0f}) y tiene "
-                 f"{e0['HHs en el área']:,.0f} hogares a 300 m (índice {e0.indice_demanda:.0f}).")
+              "Índice de demanda = hogares del área / media de su subcanal × 100.", oscura=True)
+    K.tarjeta(s, K.MARGEN + 4.6, y + 0.1, 4.45, 2.5, "2 · Ventas de la tienda (2.ª letra)",
+              f"Venta media de sueros (cajas/mes) del Customer Potential de {C.CLIENTE_NOMBRE} (PotentialQuantitative, categoría sueros).\n"
+              "Índice de ventas = venta media de la tienda / media de su subcanal × 100.", acento=True)
+    K.mensaje(s, f"Ejemplo: {e0.Nombre.title()} tiene {e0['HHs en el área']:,.0f} hogares a 300 m (índice {e0.indice_demanda:.0f}) y vende "
+                 f"{e0['Venta media (cajas/mes)']:.1f} cajas/mes (índice {e0.indice_venta:.0f}).")
 
-    s, y = K.lamina(prs, "Venta × demanda separan las tiendas en cuatro clústeres con una acción distinta.", "Metodología",
+    s, y = K.lamina(prs, "Demanda × venta separan las tiendas en cuatro clústeres con una acción distinta.", "Metodología",
                     notas="Alta = índice ≥ 100, es decir, sobre la media de su subcanal. Las Golden Stores son el clúster HH: alta demanda y alta venta.")
     x0, y0, wq, hq = K.MARGEN + 0.6, y + 0.05, 4.1, 1.25
     for q, (cx, cy) in {"HL": (0, 0), "HH": (1, 0), "LL": (0, 1), "LH": (1, 1)}.items():
         e = ej[q]
         K.tarjeta(s, x0 + cx * (wq + 0.1), y0 + cy * (hq + 0.1), wq, hq, f"{q} · {NOMBRE[q]} · {ACCION[q]}",
-                  ("GOLDEN STORES\n" if q == "HH" else "") + f"Ej.: {e.Nombre.title()[:30]} · {e['Venta media (cajas/mes)']:.1f} cajas/mes · "
-                  f"{e['HHs en el área']:,.0f} hogares", oscura=(q == "HH"), compacta=True)
+                  ("GOLDEN STORES\n" if q == "HH" else "") + f"Ej.: {e.Nombre.title()[:30]} · {e['HHs en el área']:,.0f} hogares · "
+                  f"{e['Venta media (cajas/mes)']:.1f} cajas/mes", oscura=(q == "HH"), compacta=True)
     for fila, et in enumerate(["Demanda\nalta", "Demanda\nbaja"]):
         K.texto(s, K.MARGEN, y0 + fila * (hq + 0.1) + 0.45, 0.55, 0.4, et, tam=7.5, negrita=True, color=K.GRIS)
     for colm, et in enumerate(["Ventas bajas", "Ventas altas"]):
@@ -411,10 +412,10 @@ def deck(canal, b, pan, pct, indice, sem):
     # ejemplo paso a paso
     s, y = K.lamina(prs, f"Ejemplo: {e0.Nombre.title()[:28]} es Golden Store en verde y su acción es atacar.", "Cómo se clasifica una tienda",
                     notas="Recorrido completo de una tienda real para que el equipo comercial entienda la lógica sin tecnicismos.")
-    pasos = [("Venta", f"{e0['Venta media (cajas/mes)']:.1f} cajas/mes · índice {e0.indice_venta:.0f} vs su subcanal ({e0.Subcanal.title()})"),
-             ("Demanda", f"{e0['HHs en el área']:,.0f} hogares a 300 m · índice {e0.indice_demanda:.0f}"),
-             ("Clúster", "Venta ≥ 100 y demanda ≥ 100 → HH (Golden Store)"),
-             ("Semáforo", f"Sobre la media de su clúster en venta y demanda → {e0.semaforo}"),
+    pasos = [("Demanda", f"{e0['HHs en el área']:,.0f} hogares a 300 m · índice {e0.indice_demanda:.0f} vs su subcanal ({e0.Subcanal.title()})"),
+             ("Venta", f"{e0['Venta media (cajas/mes)']:.1f} cajas/mes · índice {e0.indice_venta:.0f}"),
+             ("Clúster", "Demanda ≥ 100 y venta ≥ 100 → HH (Golden Store)"),
+             ("Semáforo", f"Sobre la media de su clúster en demanda y venta → {e0.semaforo}"),
              ("Acción", "Atacar: más SOS, exhibiciones, special packs, promoción"),
              ("Clase CP", "sin clase" if pd.isna(e0.clase_cp) else f"{e0.clase_cp} (potencial futuro)")]
     for i, (t, c) in enumerate(pasos):
@@ -478,17 +479,17 @@ def deck(canal, b, pan, pct, indice, sem):
 
     verdes = int(sem["verde"].sum())
     s, y = K.lamina(prs, f"Los semáforos dejan {verdes:,} tiendas en verde para actuar primero.", "Priorización",
-                    "Semáforo individualizado por clúster (HH, HL, LH, LL) con la desviación estándar de venta y demanda dentro del clúster.",
-                    notas="Verde: venta y demanda sobre la media de su clúster. Rojo: ambas debajo. Amarillo: alrededor de la media o con una de las dos subdesarrollada.")
+                    "Semáforo individualizado por clúster (HH, HL, LH, LL) con la desviación estándar de demanda y venta dentro del clúster.",
+                    notas="Verde: demanda y venta sobre la media de su clúster. Rojo: ambas debajo. Amarillo: alrededor de la media o con una de las dos subdesarrollada.")
     for i, (col, t, c) in enumerate([("verde", "Verde", "Tiendas con altas ventas y alto índice de demanda: se gasta más y tienen mayor potencial."),
-                                     ("amarillo", "Amarillo", "Alrededor de las medias (#2) + subdesarrollo en ventas o demanda: #1 alta venta / demanda baja · "
+                                     ("amarillo", "Amarillo", "Alrededor de las medias (#2) + subdesarrollo en ventas o demanda: #1 demanda baja / venta alta · "
                                                               "#3 demanda alta / venta menor."),
                                      ("rojo", "Rojo", "Tiendas con bajo índice de demanda y baja venta media: se vende menos y el potencial es bajo.")]):
         yy = y + 0.1 + i * 0.95
         K.caja(s, K.MARGEN, yy + 0.1, 0.5, 0.5, relleno=SEMAFORO[col], forma=K.MSO_SHAPE.OVAL)
         K.texto(s, K.MARGEN + 0.7, yy + 0.08, 8.3, 0.22, t, tam=11, negrita=True, fuente=K.FUENTE_TITULO)
         K.texto(s, K.MARGEN + 0.7, yy + 0.34, 8.3, 0.5, c, tam=9, color=K.GRIS)
-    K.mensaje(s, "Verde: z de venta y de demanda (ambas en log) > 0 · Rojo: ambos < 0 · Amarillo: |z| ≤ 0.5 en ambos o solo uno arriba.")
+    K.mensaje(s, "Verde: z de demanda y de venta (ambas en log) > 0 · Rojo: ambos < 0 · Amarillo: |z| ≤ 0.5 en ambos o solo uno arriba.")
 
     s, y = K.lamina(prs, f"{p1_n:,} tiendas P1 (HH y LH en verde y amarillo) son la prioridad de la categoría.", "Priorización",
                     f"Target: sueros · {n:,} tiendas. P1: capitalizar con los clústeres de alta venta de la categoría.",
@@ -503,14 +504,14 @@ def deck(canal, b, pan, pct, indice, sem):
     K.mensaje(s, "P1 · Capitalizar con los clústeres de alta venta: HH y LH en semáforo verde y amarillo.", invertido=True)
 
     top = (b[(b.cluster == "HH") & (b.semaforo == "verde")].sort_values("Venta media (cajas/mes)", ascending=False)
-           .head(10)[["Nombre", "Subcanal", "Municipio", "Venta media (cajas/mes)", "HHs en el área", "indice_demanda", "clase_cp"]])
+           .head(10)[["Nombre", "Subcanal", "Municipio", "HHs en el área", "indice_demanda", "Venta media (cajas/mes)", "clase_cp"]])
     s, y = K.lamina(prs, "Estas 10 Golden Stores en verde son las primeras a atacar.", "Priorización",
                     "Tiendas HH con semáforo verde, ordenadas por venta. La clase CP acompaña la clasificación.",
                     notas="Ejemplos concretos para el equipo de campo: las tiendas HH verde de mayor venta.")
     tt = top.rename(columns={"Venta media (cajas/mes)": "Cajas/mes", "HHs en el área": "Hogares 300 m", "indice_demanda": "Índice demanda", "clase_cp": "Clase CP"})
     tt["Nombre"] = tt.Nombre.str.slice(0, 32)
     tt["Subcanal"] = tt.Subcanal.str.title()
-    K.tabla(s, tt, K.MARGEN, y, 9.1, anchos=[2.6, 1.55, 1.05, 0.85, 1.05, 1.0, 1.0], alto_fila=0.26, tam=7, resaltar=[0, 1, 2],
+    K.tabla(s, tt, K.MARGEN, y, 9.1, anchos=[2.6, 1.55, 1.05, 1.05, 1.0, 0.85, 1.0], alto_fila=0.26, tam=7, resaltar=[0, 1, 2],
             formato={"Cajas/mes": lambda v: f"{v:,.1f}", "Hogares 300 m": lambda v: f"{v:,.0f}", "Índice demanda": lambda v: f"{v:.0f}",
                      "Clase CP": lambda v: "sin clase" if pd.isna(v) else str(v)})
     K.mensaje(s, "Atacar: más SOS, exhibiciones, special packs, ítems exclusivos, precio, comunicación y promoción.")
@@ -562,7 +563,7 @@ def deck(canal, b, pan, pct, indice, sem):
                     notas="El Excel corporativo trae portada, resumen con fórmulas, tiendas con filtros y colores, perfiles, accionables, guion y diccionario.")
     for i, (t, c) in enumerate([(f"05_golden_stores_{canal.lower()}_*.xlsx", "Resumen con fórmulas · Tiendas con clúster, semáforo, P1 y coordenadas · Perfiles · Accionables · Guion."),
                                 (f"04_pdv_*_{canal.lower()}_hexagonos_*.xlsx", "Perfil completo por tienda: HHs · % · Índice de todas las categorías y competencia a 300 m."),
-                                ("hexagonos_h3r10_*.gpkg", "Hexágonos con hogares, NSE y red Bepensa para mapas.")]):
+                                ("hexagonos_h3r10_*.gpkg", f"Hexágonos con hogares, NSE y red {C.CLIENTE_NOMBRE} para mapas.")]):
         K.tarjeta(s, K.MARGEN, y + 0.05 + i * 0.8, 9.1, 0.72, t, c, oscura=(i == 0), compacta=True)
 
     # anexo
@@ -578,12 +579,12 @@ def deck(canal, b, pan, pct, indice, sem):
     setup = [("Mercado", f"Canal {canal} · {C.ZM_NOMBRE} ({', '.join(C.ZM_MUNICIPIOS.values())})"), ("Venta", "Venta media de sueros del Customer Potential (escenario conservador)"),
              ("Target", f"Sueros · {n:,} tiendas con venta y hogares 2025 a ≤ {C.RADIO_PDV_M} m (urbanos y rurales)"),
              ("Líneas de reporte", "Total sueros (sin SKU ni marca: share, distribución y precio no aplican)"),
-             ("Semáforos", "Individualizados por clúster, con desviación estándar de venta y demanda"),
+             ("Semáforos", "Individualizados por clúster, con desviación estándar de demanda y venta"),
              ("Clasificación CP", "Clase de potencial futuro (Very High → Low) como variable adicional")]
     for i, (t, c) in enumerate(setup):
         K.tarjeta(s, K.MARGEN + (i % 2) * 4.6, y + 0.02 + (i // 2) * 1.0, 4.45, 0.88, t, c, oscura=(i == 2), compacta=True)
     s, y = K.lamina(prs, "Todo sale del Customer Potential: venta media, potencial y clase de sueros.", "Anexo · datos del cliente",
-                    notas="Solo CP (Bepensa, escenario conservador, categoría sueros). El archivo de ventas ya no se usa.")
+                    notas=f"Solo CP ({C.CLIENTE_NOMBRE}, escenario conservador, categoría sueros). El archivo de ventas ya no se usa.")
     for i, (t, c) in enumerate([("Venta media", "PotentialQuantitative (sueros): cajas/mes de la tienda. Define el índice de venta y el clúster."),
                                 ("Potencial", "PotentialQuantitativeFinal (sueros): potencial futuro frente a su comparable. No decide el clúster."),
                                 ("Clase CP", "PotentialQualitative (Very High → Low): mide potencial absoluto (venta × brecha); ordena dentro del clúster."),
@@ -606,7 +607,7 @@ def deck(canal, b, pan, pct, indice, sem):
     for i, (qq, rsp) in enumerate(objeciones):
         K.tarjeta(s, K.MARGEN, y + 0.02 + i * 0.86, 9.1, 0.78, qq, rsp, oscura=(i == 0), compacta=True)
 
-    K.notas(K.cierre(prs, "Gracias", f"Kin Analytics · Golden Stores · Sueros · Canal {canal} · Bepensa"), "Cierre.")
+    K.notas(K.cierre(prs, "Gracias", f"Kin Analytics · Golden Stores · Sueros · Canal {canal} · {C.CLIENTE_NOMBRE}"), "Cierre.")
     guion = [("Elevator hook (60 s)", [prs.slides[1].notes_slide.notes_text_frame.text.replace("GUION 60 s: ", "")]),
              ("Objeciones críticas (pre-mortem)", [f"{qq} → {rsp}" for qq, rsp in objeciones]),
              ("Riesgos y mitigación", [f"{r[0]}: {r[1]} Mitigación: {r[2]}" for r in riesgos]),
@@ -623,7 +624,7 @@ def excel_corporativo(canal, b, pan, pct, indice, sem, p1, guion, ruta):
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
     pil = PILOTO[canal]["asignacion"].set_index("pos_id_cp")
-    tiendas = (b.assign(P1=b.pos_id_cp.isin(p1.pos_id_cp).map({True: "Sí", False: "No"}),
+    tiendas = (b.assign(P1=b.pos_id_cp.isin(p1.pos_id_cp).map({True: "Sí", False: "No"}), **{"Prioridad (letras)": b.cluster.map(PRIORIDAD)},
                         Frontera=b.frontera.map({True: "Sí", False: "No"}),
                         **{"Grupo piloto": b.pos_id_cp.map(pil.grupo).fillna("—"), "Zona piloto (H3 r7)": b.pos_id_cp.map(pil.zona).fillna("—")})
                .rename(columns={"pos_id_cp": "ID PDV", "cluster": "Clúster", "accion": "Acción", "semaforo": "Semáforo", "semaforo_detalle": "Detalle semáforo",
@@ -631,15 +632,15 @@ def excel_corporativo(canal, b, pan, pct, indice, sem, p1, guion, ruta):
                                 "indice_demanda": "Índice demanda", "clase_cp": "Clase CP",
                                 "DENUE Moderno en el área": "DENUE moderno 300 m", "DENUE Tradicional en el área": "DENUE tradicional 300 m",
                                 "brecha_relativa": "Brecha relativa CP"}))
-    cols = ["ID PDV", "Nombre", "Subcanal", "Municipio", "Localidad", "Clúster", "Acción", "Semáforo", "Detalle semáforo", "P1", "Frontera", "Venta media cajas/mes",
-            "Índice venta", "Hogares 300 m", "Índice demanda", "Clase CP", "Brecha relativa CP", "Grupo piloto",
+    cols = ["ID PDV", "Nombre", "Subcanal", "Municipio", "Localidad", "Clúster", "Prioridad (letras)", "Acción", "Semáforo", "Detalle semáforo", "P1", "Frontera", "Hogares 300 m",
+            "Índice demanda", "Venta media cajas/mes", "Índice venta", "Clase CP", "Brecha relativa CP", "Grupo piloto",
             "Zona piloto (H3 r7)", "DENUE moderno 300 m", "DENUE tradicional 300 m", "Latitud", "Longitud"]
     tiendas = tiendas[cols].sort_values(["Clúster", "Semáforo", "Venta media cajas/mes"], ascending=[True, False, False])
     tiendas["Subcanal"] = tiendas.Subcanal.str.title()
     X.hoja_tabla(wb, "Tiendas", tiendas, formatos={"Venta media cajas/mes": "#,##0.0", "Índice venta": "0", "Hogares 300 m": "#,##0", "Índice demanda": "0",
                                                   "Brecha relativa CP": "0.00",
                                                   "Latitud": "0.000000", "Longitud": "0.000000"},
-                 semaforo_col="Semáforo", cluster_col="Clúster", barras=["Venta media cajas/mes", "Hogares 300 m"],
+                 semaforo_col="Semáforo", cluster_col="Clúster", barras=["Hogares 300 m", "Venta media cajas/mes"],
                  anchos={"Nombre": 34, "Detalle semáforo": 26, "Acción": 11})
     # resumen con fórmulas vivas sobre la hoja Tiendas
     ws = wb.create_sheet("Resumen", 0)
@@ -696,8 +697,8 @@ def excel_corporativo(canal, b, pan, pct, indice, sem, p1, guion, ruta):
     X.hoja_tabla(wb, "Perfil índice", indice.round(0).rename_axis("Clúster"), indice=True, titulo="Índice vs total de la ZM (100 = media)",
                  nota="≥ 105 = sobrerrepresentado; ≤ 95 = subrepresentado.", formatos={c: "0" for c in C.CATEGORIAS})
     X.hoja_texto(wb, "Accionables", [(f"{q} · {NOMBRE[q]} · {ACCION[q]}", ACCIONABLES[q]) for q in CLUSTERS] +
-                 [("Semáforos", ["Verde: venta y demanda sobre la media del clúster.", "Rojo: ambas bajo la media del clúster.",
-                                 "Amarillo: alrededor de las medias (#2) o subdesarrollo en una (#1 alta venta / demanda baja, #3 demanda alta / venta menor).",
+                 [("Semáforos", ["Verde: demanda y venta sobre la media del clúster.", "Rojo: ambas bajo la media del clúster.",
+                                 "Amarillo: alrededor de las medias (#2) o subdesarrollo en una (#1 demanda baja / venta alta, #3 demanda alta / venta menor).",
                                  "P1: capitalizar con HH y LH en verde y amarillo."])])
     X.hoja_texto(wb, "Guion y objeciones", guion)
     tp = PILOTO[canal]["tabla"].copy()
@@ -721,15 +722,16 @@ def excel_corporativo(canal, b, pan, pct, indice, sem, p1, guion, ruta):
                         ("Grupo piloto / Zona piloto", "Asignación del sorteo por zonas H3 res 7 para el universo recomendado del piloto (hoja Piloto)."),
                         ("Índice demanda", "Hogares del área / media de su subcanal × 100."),
                         ("Clúster", "HH, HL, LH, LL: demanda (primera letra) × venta (segunda letra); alta = índice ≥ 100."),
-                        ("Semáforo", "Individualizado por clúster con la desviación estándar de venta y demanda (ambas en log)."),
-                        ("P1", "HH y LH en semáforo verde o amarillo."),
+                        ("Semáforo", "Individualizado por clúster con la desviación estándar de demanda y venta (ambas en log)."),
+                        ("P1", "HH y LH en semáforo verde o amarillo (priorización Golden Stores)."),
+                        ("Prioridad (letras)", "Primero la demanda (1.ª letra) y después la venta (2.ª letra): HH P1 · HL P2 · LH P3 · LL P4."),
                         ("Clase CP", "Clase de potencial futuro del Customer Potential (Very High → Low). Clasifica, no decide."),
                         ("DENUE 300 m", "Tiendas DENUE 05_2026 (moderno / tradicional) en el área de la tienda.")], columns=["Campo", "Definición"])
     X.hoja_tabla(wb, "Diccionario", dic, anchos={"Campo": 22, "Definición": 100})
-    X.portada(wb, "Golden Stores", f"Sueros · Canal {canal} · {C.ZM_NOMBRE} · Bepensa",
-              [("Metodología", "Golden Stores (NielsenIQ | Spectra): venta media del CP × demanda potencial → clústeres HH / HL / LH / LL, accionables y semáforos."),
+    X.portada(wb, "Golden Stores", f"Sueros · Canal {canal} · {C.ZM_NOMBRE} · {C.CLIENTE_NOMBRE}",
+              [("Metodología", "Golden Stores (NielsenIQ | Spectra): demanda potencial × venta media del CP → clústeres HH / HL / LH / LL, accionables y semáforos."),
                ("Universo", f"{len(b):,} tiendas del canal {canal} con venta y hogares a ≤ {C.RADIO_PDV_M} m."),
-               ("Fuentes", "Customer Potential de Bepensa (venta media de sueros) · Censo 2020 + Intercensal 2025 · Marco Geoestadístico Intercensal 2025 · DENUE 05_2026."),
+               ("Fuentes", f"Customer Potential de {C.CLIENTE_NOMBRE} (venta media de sueros) · Censo 2020 + Intercensal 2025 · Marco Geoestadístico Intercensal 2025 · DENUE 05_2026."),
                ("Elaboró", "Kin Analytics · generado por notebooks/_src/05_presentacion_pdv.py")],
               [("Resumen", "Clústeres, mix de ventas, índice y semáforos con fórmulas vivas."), ("Tiendas", "Una fila por tienda: clúster, acción, semáforo, P1, índices, clase CP, coordenadas."),
                ("Perfil %", "Perfil de hogares por clúster."), ("Perfil índice", "Índices vs total de la ZM."), ("Accionables", "Acciones por clúster y reglas de semáforo."),

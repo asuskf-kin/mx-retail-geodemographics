@@ -28,6 +28,7 @@ RADIO_TIERRA_M = 6_371_000
 NOMBRE_ISOTONICO = r"POWERADE|GATORADE|ISOT[OÓ]NIC|DEPORTIV|PARA DEPORTISTAS"
 NOMBRE_SUERO = r"SUERO|ELECTROL|REHIDRAT|HIDRATANTE|FLASHLYTE|PEDIALYTE|\bLYTE\b"
 NO_ES_SUERO = r"VITAMIN\s*WATER"
+SUB_VITAMIN_WATER = "Agua funcional (Vitamin Water)"
 COLUMNAS = ["datetime", "Source_Platform_Type", "Source_Ship_From_Code", "State", "city", "store_id", "store_name",
             "store_lat", "store_lng", "store_group_name", "vertical", "Source_Product_Code", "Product_Code", "Product_name",
             "Product_Brand", "Product_Category_2", "Product_Category_3", "Product_Maker_Standard", "beverage_sales",
@@ -74,9 +75,11 @@ def clasificar(df: pd.DataFrame, marcas: pd.DataFrame, categoria: str, subcatego
     for cond, valor, nombre_regla in reversed(reglas):             # se aplican al revés: la primera de la lista queda encima
         sub = sub.mask(cond, valor)
         regla = regla.mask(cond, nombre_regla)
-    no_suero = normalizar(marca).str.contains(NO_ES_SUERO) | nombre.str.contains(NO_ES_SUERO)
-    sub[no_suero] = np.nan
-    regla[no_suero] = "no es suero ni derivado (Vitamin Water: agua funcional)"
+    # Vitamin Water (Coca-Cola, agua funcional): ENTRA con subcategoria propia (usuario, 2026-10-05: incluir Powerade, Flashlyte,
+    # Glaceau Vitamin Water y Vitamin Water "en todos los casos"); antes se excluia por no ser suero ni derivado
+    vw = normalizar(marca).str.contains(NO_ES_SUERO) | nombre.str.contains(NO_ES_SUERO)
+    sub[vw] = SUB_VITAMIN_WATER
+    regla[vw] = "0 · marca Coca-Cola de hidratación (Vitamin Water: agua funcional)"
     return sub, regla
 
 

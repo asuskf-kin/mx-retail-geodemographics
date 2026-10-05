@@ -10,3 +10,4 @@ outputs/**/*.html
 .venv/
 *.lock
 !uv.lock
+*.png

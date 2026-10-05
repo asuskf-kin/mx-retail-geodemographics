@@ -13,7 +13,7 @@ import pandas as pd
 from scipy import stats
 
 # columnas de ubicación que AltScore entrega cuando la exportación las incluye (diccionario, págs. 2 y 8)
-COLS_LAT, COLS_LON = ("location.lat", "lat", "latitude", "latitud"), ("location.lng", "lon", "lng", "longitude", "longitud")
+COLS_LAT, COLS_LON = ("location.lat", "lat", "latitude", "latitud"), ("location.lng", "location.lon", "lon", "lng", "longitude", "longitud")
 COLS_HEX = ("hexIdx_res8", "hexIdx_res9", "hexIdx_res7")        # res 8 primero: res 9 viene vacío (−999997) en ~38% de las filas
 ARCHIVO = "geohex_geodig.parquet"                               # exportación con ubicación (2026-09-30)
 CENTINELAS = (-999999, -999998, -999997)                        # AltScore: sin dato o error → NaN

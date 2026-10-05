@@ -155,7 +155,14 @@ def extraer(zip_path: Path, destino: Path | None = None) -> Path:
             shutil.rmtree(tmp, ignore_errors=True)
             with zipfile.ZipFile(zip_path) as z:
                 z.extractall(tmp)
-            os.replace(tmp, destino)
+            for intento in range(10):               # Windows (antivirus/indexador) a veces bloquea un momento la carpeta recien creada
+                try:
+                    os.replace(tmp, destino)
+                    break
+                except PermissionError:
+                    if intento == 9:
+                        raise
+                    time.sleep(3 * (intento + 1))
     return destino
 
 

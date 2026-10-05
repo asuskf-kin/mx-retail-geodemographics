@@ -17,7 +17,7 @@
 #
 # **Fuente:** `data/raw/rappi/rappi.csv` (nacional; no se sube a git). Una fila = **una línea de pedido** (pedido × producto):
 # fecha-hora, tienda (id, nombre, cadena, vertical, lat/lon), producto (categorías, marca, fabricante; los competidores de
-# Coca-Cola vienen **anonimizados**: marca `BRAND_####`, sin SKU, nombre ni usuario), importe (`beverage_sales`, MXN) y unidades.
+# Coca-Cola vienen **anonimizados**: marca `BRAND_####`, sin SKU, nombre ni usuario; **esas líneas no se toman**, usuario 2026-10-05), importe (`beverage_sales`, MXN) y unidades.
 #
 # **Convenciones (retail-math-eda):** grano = línea de pedido; importe en MXN tal como lo reporta Rappi (sin devoluciones:
 # se verifica que no haya negativos); con muchas pruebas la p se corrige con Benjamini-Hochberg y se decide por **tamaño de
@@ -69,9 +69,15 @@ with open(C.RAPPI_CSV, "rb") as f:
     for bloque in iter(lambda: f.read(1 << 24), b""):
         h.update(bloque)
 nac = pd.read_csv(C.RAPPI_CSV, usecols=R.COLUMNAS, engine="pyarrow")
+FILAS_ARCHIVO = len(nac)
+# no se toma lo que dice BRAND_x (usuario, 2026-10-05): marcas anonimizadas de competidores, sin SKU, nombre ni usuario
+es_brand_x = nac.Product_Brand.fillna("").str.match(C.RAPPI_EXCLUIR_MARCA)
+print(f"Líneas con marca BRAND_x que NO se toman: {es_brand_x.sum():,} de {len(nac):,} ({es_brand_x.mean():.1%}; "
+      f"{nac.beverage_sales[es_brand_x].sum() / nac.beverage_sales.sum():.1%} del importe nacional)")
+nac = nac[~es_brand_x].reset_index(drop=True)
 FUENTES_RAPPI = pd.DataFrame([{
     "insumo": "Rappi (venta en línea, nacional)", "archivo": C.RAPPI_CSV.name, "ruta": str(C.RAPPI_CSV.relative_to(BASE)),
-    "bytes": C.RAPPI_CSV.stat().st_size, "filas": len(nac),
+    "bytes": C.RAPPI_CSV.stat().st_size, "filas": FILAS_ARCHIVO, "filas sin BRAND_x": len(nac),
     "modificado": datetime.fromtimestamp(C.RAPPI_CSV.stat().st_mtime).strftime("%Y-%m-%d %H:%M"), "sha256": h.hexdigest()}])
 FUENTES_RAPPI.to_csv(C.PROC / "fuentes_rappi_00c.csv", index=False)
 display(FUENTES_RAPPI)
@@ -193,8 +199,9 @@ RELOJ = (f"Líneas entre 1 y 6 h: {madrugada.iloc[0]:.1f}% tal como viene vs {ma
 print(RELOJ)
 print(f"Rango del archivo en la ZM: {zmx.fecha.min()} → {zmx.fecha.max()} | ventana usada: {ini.date()} → {cierre.date()}")
 F_PDV = C.PROC / f"pdv_{C.CLIENTE}_{C.SLUG}.parquet"          # ventas del cliente (00), solo para confirmar el cierre
-if F_PDV.exists():
-    v = pd.read_parquet(F_PDV, columns=["primera_venta", "ultima_venta"])
+v = pd.read_parquet(F_PDV, columns=["primera_venta", "ultima_venta"]) if F_PDV.exists() else None
+if v is not None and pd.to_datetime(v.ultima_venta, errors="coerce").notna().any():      # solo si el cliente dio ventas (no "solo CP")
+    v = v.apply(pd.to_datetime, errors="coerce")
     print(f"Ventas {C.CLIENTE}: {v.primera_venta.min():%Y-%m} → {v.ultima_venta.max():%Y-%m} | mismo cierre: "
           f"{v.ultima_venta.max().strftime('%Y-%m') == cierre.strftime('%Y-%m')}")
 
@@ -290,9 +297,14 @@ u["duplicada"] = u.duplicated(COLS_ORIG, keep=False)
 dups = u.groupby("Product_Maker_Standard").agg(líneas=("duplicada", "size"), en_líneas_idénticas=("duplicada", "sum"))
 dups["%"] = dups.en_líneas_idénticas / dups.líneas * 100
 t_dup = pd.crosstab(u.Product_Maker_Standard, u.duplicada)
-DUPLICADOS = (f"Líneas idénticas: Coca-Cola {dups.loc['COCA-COLA', '%']:.1f}% (línea base, tienen código de barras) vs competidores "
-              f"{dups.loc['COMPETITOR', '%']:.1f}% (anonimizados); V de Cramér = {eda.cramer_v(t_dup):.2f}, χ² p = "
-              f"{stats.chi2_contingency(t_dup)[1]:.0e}. Se conservan: el exceso de los competidores es anonimización.")
+# sin las líneas BRAND_x casi no quedan competidores (solo marca "No disponible"): las comparaciones contra ellos no aplican
+N_COMP = int(u.Product_Maker_Standard.eq("COMPETITOR").sum())
+HAY_COMP = N_COMP >= 20 and t_dup.shape == (2, 2)
+SIN_COMP = f"no aplica: sin las líneas BRAND_x quedan {N_COMP} líneas de competidores"
+DUPLICADOS = ((f"Líneas idénticas: Coca-Cola {dups.loc['COCA-COLA', '%']:.1f}% (línea base, tienen código de barras) vs competidores "
+               f"{dups.loc['COMPETITOR', '%']:.1f}% (anonimizados); V de Cramér = {eda.cramer_v(t_dup):.2f}, χ² p = "
+               f"{stats.chi2_contingency(t_dup)[1]:.0e}. Se conservan: el exceso de los competidores es anonimización.") if HAY_COMP else
+              f"Líneas idénticas: Coca-Cola {dups.loc['COCA-COLA', '%']:.1f}% (tienen código de barras; se conservan); competidores {SIN_COMP}.")
 display(dups)
 print(DUPLICADOS)
 
@@ -321,8 +333,10 @@ t_usr = pd.crosstab(u.Product_Maker_Standard, u.user_code.isna().rename("sin usu
 t_prod = pd.crosstab(u.Product_Maker_Standard, u.Product_name.isna().rename("sin nombre de producto"))
 display(t_usr)
 edad = u.age.where(u.age >= 15)                              # 0-14 años no son compradores válidos: se tratan como faltantes
-FALTANTES = (f"Usuario y producto faltan exactamente en los competidores (V de Cramér usuario = {eda.cramer_v(t_usr):.2f}, "
-             f"producto = {eda.cramer_v(t_prod):.2f}): anonimización por diseño. Edad: {u.age.isna().mean():.0%} sin dato y "
+FALTANTES = ((f"Usuario y producto faltan exactamente en los competidores (V de Cramér usuario = {eda.cramer_v(t_usr):.2f}, "
+              f"producto = {eda.cramer_v(t_prod):.2f}): anonimización por diseño. " if HAY_COMP and t_usr.shape == (2, 2) and t_prod.shape == (2, 2)
+              else f"Usuario y producto vs competidores: {SIN_COMP}. ") +
+             f"Edad: {u.age.isna().mean():.0%} sin dato y "
              f"{(u.age < 15).mean():.1%} con edad < 15 (inválida); género 'O' = {(u.gender == 'O').mean():.0%}.")
 print(FALTANTES)
 
@@ -381,8 +395,9 @@ display(aj_ped.assign(nivel="pedido (importe)"))
 display(aj_tf.assign(nivel="tienda (venta/mes)"))
 lam = stats.boxcox(ped.importe.to_numpy())[1]
 MULTI = (f"Empaques múltiples (precio por 'unidad' > $150): {u.multiempaque.sum()} líneas ({u.multiempaque.mean():.1%}) y "
-         f"{u.beverage_sales[u.multiempaque].sum() / u.beverage_sales.sum():.1%} de la venta, sobre todo en "
-         f"{', '.join(u.store_group_name[u.multiempaque].value_counts().index[:2].astype(str))}. Box-Cox λ del importe por pedido = {lam:.2f}.")
+         f"{u.beverage_sales[u.multiempaque].sum() / u.beverage_sales.sum():.1%} de la venta"
+         + (f", sobre todo en {', '.join(u.store_group_name[u.multiempaque].value_counts().index[:2].astype(str))}" if u.multiempaque.any() else "")
+         + f". Box-Cox λ del importe por pedido = {lam:.2f}.")
 print(MULTI)
 
 fx, fy = eda.lorenz(tf.venta_mes.to_numpy())
@@ -438,7 +453,10 @@ def yoy(col):
     return xb.sum() / xa.sum() - 1, *np.quantile(bs, [0.025, 0.975])
 
 
-crec = {c: yoy(c) for c in ["venta", "venta_cc", "venta_comp", "pedidos"]}
+SERIES_CREC = [("venta", "venta total"), ("venta_cc", "Coca-Cola"), ("venta_comp", "competidores"), ("pedidos", "pedidos")]
+if not HAY_COMP:                                     # sin BRAND_x: venta total = Coca-Cola y no hay competidores
+    SERIES_CREC = [("venta", "venta total (Coca-Cola)"), ("pedidos", "pedidos")]
+crec = {c: yoy(c) for c, _ in SERIES_CREC}
 calor, fresca = dia[dia.mes_cal.isin([4, 5, 6])].venta, dia[dia.mes_cal.isin([11, 12, 1, 2])].venta
 d_calor = eda.cliff_delta(calor, fresca)
 quin = dia.index.day.isin([15, 16, 17, 30, 31, 1, 2])
@@ -448,7 +466,7 @@ d_finde = eda.cliff_delta(dia.venta[finde], dia.venta[~finde])
 cal = eda.efecto_categorico(dia.assign(mes_cal=dia.mes_cal.astype(str), dow=dia.dow.astype(str)), ["mes_cal", "dow"], "venta").set_index("variable")
 calendario = pd.DataFrame([
     *[(f"Crecimiento ene–ago 2026 vs 2025 · {n_}", f"{crec[c][0]:+.1%}", f"IC95 bootstrap de semanas [{crec[c][1]:+.1%}, {crec[c][2]:+.1%}]")
-      for c, n_ in [("venta", "venta total"), ("venta_cc", "Coca-Cola"), ("venta_comp", "competidores"), ("pedidos", "pedidos")]],
+      for c, n_ in SERIES_CREC],
     ("Estacionalidad por mes (Kruskal-Wallis)", f"ε² = {cal.loc['mes_cal', 'epsilon2']:.3f}", f"IC95 {cal.loc['mes_cal', 'IC95']} · q = {cal.loc['mes_cal', 'q_BH']:.1e}"),
     ("Calor (abr–jun) vs fresca (nov–feb), venta diaria", f"δ = {d_calor:+.2f}",
      f"mediana ${calor.median():,.0f} vs ${fresca.median():,.0f} · p = {stats.mannwhitneyu(calor, fresca).pvalue:.1e}"),
@@ -508,13 +526,20 @@ for s, g in u[~u.multiempaque].groupby("subcategoria"):
     if len(a) >= 20 and len(b) >= 20:
         precio.append({"subcategoria": s, "n Coca-Cola": len(a), "n competidor": len(b), "mediana Coca-Cola": a.median(),
                        "mediana competidor": b.median(), "δ Cliff (CC vs comp)": eda.cliff_delta(a, b), "p": stats.mannwhitneyu(a, b).pvalue})
-precio = pd.DataFrame(precio)
-precio["q_BH"] = stats.false_discovery_control(precio.p, method="bh")
+precio = pd.DataFrame(precio, columns=["subcategoria", "n Coca-Cola", "n competidor", "mediana Coca-Cola", "mediana competidor",
+                                       "δ Cliff (CC vs comp)", "p"])
+precio["q_BH"] = stats.false_discovery_control(precio.p, method="bh") if len(precio) else []
+if precio.empty:
+    precio = pd.DataFrame({"nota": [f"Precio Coca-Cola vs competidor: {SIN_COMP}"]})
 display(precio.round(3))
 MARCAS = (f"Sueros = {sub_tot.get(SUEROS, 0):.0f}% de la venta, isotónicos {sub_tot.get(ISOTONICOS, 0):.0f}%, sin subcategoría "
-          f"{sub_tot.get(R.SIN_SUB, 0):.1f}%. Coca-Cola hace {fab_pct.loc['COCA-COLA', '% venta']:.0f}% del valor (sueros "
-          f"{sub_fab.loc[SUEROS, 'COCA-COLA']:.0f}%, isotónicos {sub_fab.loc[ISOTONICOS, 'COCA-COLA']:.0f}%); tendencia de su "
-          f"participación mensual τ = {tau_cc[0]:+.2f} (p = {tau_cc[1]:.2f}).")
+          f"{sub_tot.get(R.SIN_SUB, 0):.1f}%. " +
+          (f"Coca-Cola hace {fab_pct.loc['COCA-COLA', '% venta']:.0f}% del valor (sueros {sub_fab.loc[SUEROS, 'COCA-COLA']:.0f}%, "
+           f"isotónicos {sub_fab.loc[ISOTONICOS, 'COCA-COLA']:.0f}%); tendencia de su participación mensual τ = {tau_cc[0]:+.2f} "
+           f"(p = {tau_cc[1]:.2f})." if HAY_COMP else
+           "Sin las líneas BRAND_x la venta es de Coca-Cola: no se mide participación contra competidores. Por marca: " +
+           ", ".join(f"{m} {v:.0f}%" for m, v in (u.groupby('Product_Brand').beverage_sales.sum() / u.beverage_sales.sum() * 100)
+                     .sort_values(ascending=False).head(4).items()) + "."))
 print(MARCAS)
 
 # %% [markdown]
@@ -536,7 +561,7 @@ def co_compra(a, b):
             "p Fisher": stats.fisher_exact(t.to_numpy())[1]}
 
 
-canasta = pd.DataFrame({"Coca-Cola × competidor": co_compra(ped.con_coca, ped.con_competidor),
+canasta = pd.DataFrame({**({"Coca-Cola × competidor": co_compra(ped.con_coca, ped.con_competidor)} if HAY_COMP else {}),
                         "suero × isotónico": co_compra(ped.con_suero, ped.con_isotonico)}).T
 display(canasta.round(4))
 print(f"Líneas por pedido: {ped.líneas.value_counts(normalize=True).mul(100).round(1).head(4).to_dict()} (%)")
@@ -682,7 +707,7 @@ hallazgos00c = pd.DataFrame([
      "La etiqueta y el polígono coinciden: el universo es el correcto."),
     ("Producto", "Regla 'sueros primero' en la ZM (ventana): " + "; ".join(f"{k} {int(v):,} líneas" for k, v in por_regla[f"líneas {C.ZM_NOMBRE} (ventana)"].items() if v)
                  + f". Pureza de marca {marcas.pureza.min():.2f}.",
-     "Entran sueros y derivados aunque vengan fuera de su categoría; sale solo lo que no es suero (Vitamin Water, refrescos)."),
+     "Entran sueros y derivados aunque vengan fuera de su categoría; Vitamin Water entra como agua funcional de Coca-Cola (usuario, 2026-10-05); sale solo lo que no es hidratación (refrescos, agua sola)."),
     ("Cobertura y ventana", COBERTURA, "Crecimientos y tendencias solo en meses comparables (ene–ago)."),
     ("Reloj", RELOJ, "Los meses se asignan con la hora tal como viene."),
     ("Llave y duplicados", f"{LLAVE}. {DUPLICADOS}", "Grano = línea de pedido; no se borran líneas."),
@@ -693,8 +718,10 @@ hallazgos00c = pd.DataFrame([
      "Venta muy concentrada: medianas y rangos, no medias; precio sin empaques múltiples."),
     ("Calendario", "; ".join(f"{r.prueba}: {r.efecto} ({r.detalle.split(' ·')[0]})" for r in calendario.itertuples()),
      "La hidratación sigue al calor (abr–jun); el Rappi del 06 usa toda la ventana para no depender de la temporada."),
-    ("Marcas", MARCAS, "Coca-Cola (sistema Bepensa) domina isotónicos; en sueros compite con marcas anonimizadas."),
-    ("Canasta", f"Coca-Cola × competidor lift = {canasta.loc['Coca-Cola × competidor', 'lift']:.2f}; suero × isotónico lift = "
+    ("Marcas", MARCAS, (f"Coca-Cola (sistema {C.CLIENTE_NOMBRE}) domina isotónicos; en sueros compite con marcas anonimizadas." if HAY_COMP else
+      "Las marcas anonimizadas (BRAND_x) no se toman (usuario, 2026-10-05): el análisis es solo de Coca-Cola.")),
+    ("Canasta", (f"Coca-Cola × competidor lift = {canasta.loc['Coca-Cola × competidor', 'lift']:.2f}; " if HAY_COMP else
+                 f"Coca-Cola × competidor: {SIN_COMP}; ") + f"suero × isotónico lift = "
                 f"{canasta.loc['suero × isotónico', 'lift']:.2f} (Fisher p = {canasta.loc['suero × isotónico', 'p Fisher']:.0e}).",
      "Lift < 1: el comprador elige una marca o subcategoría por pedido (sustitutos)."),
     ("Clientes", CLIENTES, "RFM solo con Coca-Cola (competidores sin usuario)."),
@@ -732,7 +759,7 @@ X.hoja_tabla(wb, "Tiendas", para_excel(tiendas_out.round(2)), titulo="Tiendas f�
                        "% sueros": "0.0", "% Coca-Cola": "0.0", "lat": "0.000000", "lon": "0.000000"}, barras=["venta_mes"], anchos={"nombre": 40})
 X.hoja_tabla(wb, "Mensual", mensual.round(1).reset_index(), titulo="Serie mensual de la ZM", formatos={"venta": "#,##0", "ticket": "0.0"})
 X.hoja_tabla(wb, "Calendario", calendario, titulo="Crecimiento y calendario", anchos={"prueba": 48, "detalle": 70})
-X.hoja_tabla(wb, "Marcas", marcas_top.round(2), titulo="Marcas por venta (competidores anonimizados)", formatos={"venta": "#,##0"})
+X.hoja_tabla(wb, "Marcas", marcas_top.round(2), titulo="Marcas por venta" + ("" if not HAY_COMP else " (competidores anonimizados)"), formatos={"venta": "#,##0"})
 X.hoja_tabla(wb, "Precio", precio.round(4), titulo="Precio por unidad sin empaques múltiples: Coca-Cola vs competidor")
 X.hoja_tabla(wb, "Canasta", canasta.round(4).rename_axis("par"), indice=True, titulo="Co-compra en el mismo pedido (lift y Fisher)")
 X.hoja_tabla(wb, "Univariado", uni.round(3).reset_index(), titulo="Univariado por nivel (línea, pedido, tienda)", anchos={"variable": 22, "lectura": 40})

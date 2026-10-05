@@ -379,7 +379,7 @@ def nse_region(ent, filas):
     P = BASE / "data" / "processed" / f"qasur_{ent}"
     slug = f"zm_qasur_{ent}"
     if not (P / f"manzanas_{slug}.gpkg").exists():
-        return pd.Series(np.nan, index=filas.index), "falta el 01 del estado"
+        return pd.DataFrame(index=filas.index, columns=["N_region", "hog_region", *[f"pct_{c}" for c in NSE]], dtype=float), "falta el 01 del estado"
     ag = pd.read_parquet(P / f"nse_ageb_{slug}.parquet")
     la_, lo_ = LT.centros(filas.cl)
     celdas = sorted({h for v in LT.hexagonos_en_radio(la_, lo_, R300, C.H3_RES) for h in v})
@@ -402,13 +402,18 @@ def nse_region(ent, filas):
     ped[HHC] = ped[HHC].values * (ped.geometry.area / ped.area_p).values[:, None]
     hexr = ped.groupby("hex")[HHC].sum().set_axis(NSE, axis=1)
     hh_ = LT.suma_area(hexr, LT.hexagonos_en_radio(la_, lo_, R300, C.H3_RES)).set_axis(NSE, axis=1)
-    return pd.Series(LT.nivel_medio(hh_).to_numpy(), index=filas.index), "ok"
+    tot = hh_.sum(axis=1)
+    out = pd.DataFrame({"N_region": LT.nivel_medio(hh_).to_numpy(), "hog_region": tot.to_numpy()}, index=filas.index)
+    for c in NSE:
+        out[f"pct_{c}"] = (100 * hh_[c] / tot.where(tot > 0)).to_numpy()
+    return out, "ok"
 
 
-nie["N_region"], estado_ok = np.nan, {}
+COLS_REG = ["N_region", "hog_region", *[f"pct_{c}" for c in NSE]]
+nie[COLS_REG], estado_ok = np.nan, {}
 for ent, filas in nie.groupby("ENT"):
     n_, st_ = nse_region(ent, filas)
-    nie.loc[filas.index, "N_region"] = n_
+    nie.loc[filas.index, COLS_REG] = n_[COLS_REG].to_numpy(dtype=float)
     estado_ok[ent] = st_
 print("Estados:", ", ".join(f"{e} {v}" for e, v in estado_ok.items()))
 # validación en la ZM Mérida: cálculo regional vs el del 04 (sección 1)
@@ -428,9 +433,16 @@ reg_hoy = medir("4b · Región Sur", "N_est", "como hoy (corte del 06)", nie.L1n
 reg_rel = medir("4b · Región Sur", "N_est", "relativo (media de las tiendas)", nie.L1n[okr], nie.N_est[okr], nie.N_est[okr].mean())
 reg_ref = medir("4b · Región Sur", "N_est", f"referencia Nielsen (N ≥ {N_REF:.2f})", nie.L1n[okr], nie.N_est[okr], N_REF)
 region = pd.DataFrame([reg_hoy, reg_rel, reg_ref])
-por_estado = (nie[okr].assign(ok_hoy=lambda t: t.L1_hoy == t.L1n, ok_rel=lambda t: t.L1_rel == t.L1n)
-              .groupby("Estado").agg(tiendas=("L1n", "size"), **{"% acierto como hoy": ("ok_hoy", "mean")}, **{"% acierto corte relativo": ("ok_rel", "mean")}))
-por_estado.iloc[:, 1:] *= 100
+nie["L1_ref"] = np.where(nie.N_est.isna(), None, np.where(nie.N_est >= N_REF, "H", "L"))
+_e = nie.assign(est=okr, ok_hoy=lambda t: (t.L1_hoy == t.L1n).where(okr), ok_rel=lambda t: (t.L1_rel == t.L1n).where(okr),
+                ok_ref=lambda t: (t.L1_ref == t.L1n).where(okr), H_n=lambda t: (t.L1n == "H").astype(float),
+                H_o=lambda t: (t.L1_hoy == "H").astype(float).where(okr))
+por_estado = _e.groupby("Estado").agg(**{"tiendas Nielsen": ("L1n", "size"), "con nuestra estimación": ("est", "sum"),
+                                         "nivel NSE medio (1-6)": ("N_est", "mean"), "% H Nielsen": ("H_n", "mean"),
+                                         "% H nuestro (como hoy)": ("H_o", "mean"), "% acierto como hoy": ("ok_hoy", "mean"),
+                                         "% acierto corte relativo": ("ok_rel", "mean"), "% acierto referencia Nielsen": ("ok_ref", "mean")})
+pct_cols = [c for c in por_estado if c.startswith("%")]
+por_estado[pct_cols] *= 100
 display(region.round(3))
 display(por_estado.round(0))
 REGION = (f"Región Sur ({int(okr.sum()):,} de {len(nie):,} tiendas con estimación): como hoy {reg_hoy['exactitud']:.0%}, corte relativo "
@@ -474,25 +486,92 @@ L1_06 = np.where(zm.N_cluster_alt >= CORTE_06["N_cluster_alt"], "H", "L")
 L1_rel = np.where(zm.N_cluster_alt >= zm.N_cluster_alt.mean(), "H", "L")
 # todas las tiendas de la línea base (1,420) con nuestra estimación (sección 4b)
 SIN_EST = "sin estimar (sin insumos INEGI del estado)"
+MOTIVO = pd.Series(np.select([okr, nie.ENT.map(estado_ok).ne("ok"), nie.lat.isna() | nie.lon.isna()],
+                             ["no aplica", "sin estimar · falta procesar los insumos INEGI del estado", "sin estimar · Nielsen no trae coordenada"],
+                             "sin estimar · sin hogares INEGI a 300 m de la tienda"), index=nie.index)
 tiendas = pd.DataFrame({
     "tienda Nielsen": nie["Store Name"].astype(str).str.replace(r"\s*-\s*\d+X\d+$", "", regex=True).str.strip(),
-    "latitud": nie.lat.round(6), "longitud": nie.lon.round(6), "colonia (Nielsen)": nie["Colonia"], "CP": nie["Código Postal"],
+    "latitud": nie.lat.round(6), "longitud": nie.lon.round(6), "colonia (Nielsen)": nie["Colonia"].fillna("sin colonia en Nielsen"),
+    "CP": pd.to_numeric(nie["Código Postal"], errors="coerce").map(lambda v: "sin CP en Nielsen" if pd.isna(v) else f"{int(v):05d}"),
     "municipio": nie.Municipio, "1.ª letra Nielsen": nie.L1n, "nuestra 1.ª letra (como hoy)": nie.L1_hoy})
+# desglose: de dónde sale nuestra letra en cada tienda
+alt_zm = zm.set_index("Nielsen ID")
+SIN_ALT = "no aplica · AltScore solo en la ZM Mérida"
+desg = pd.DataFrame({
+    "estado": nie.Estado, "hexágono H3 res 9 (clúster)": nie.cl,
+    "hogares 2025 en el clúster (300 m)": nie.hog_region.round(0),
+    **{f"% {c}": nie[f"pct_{c}"].round(1) for c in NSE},
+    "nivel NSE INEGI (1 = D/E … 6 = A/B)": nie.N_region.round(2),
+    "puntos AltScore en el clúster": nie["Nielsen ID"].map(alt_zm.alt_puntos),
+    "nivel NSE AltScore (escala 1-6)": nie["Nielsen ID"].map(alt_zm.N_alt).round(2),
+    "nivel NSE final": nie.N_est.round(2),
+    "corte como hoy": np.where(okr, np.round(corte_hoy, 2), np.nan),
+    "cómo se calcula": np.where(en_zm, f"(1 − {LAM}) · INEGI + {LAM} · AltScore; H si ≥ media de nuestros PDV Tradicional (06)",
+                                "solo INEGI; H si ≥ media INEGI de nuestros PDV Tradicional (06)"),
+    "nuestra 1.ª letra (corte relativo)": nie.L1_rel, "acierta (corte relativo)": np.where(okr, np.where(nie.L1_rel == nie.L1n, "sí", "no"), None),
+    "nuestra 1.ª letra (referencia Nielsen)": nie.L1_ref, "acierta (referencia Nielsen)": np.where(okr, np.where(nie.L1_ref == nie.L1n, "sí", "no"), None)})
+desg[["puntos AltScore en el clúster", "nivel NSE AltScore (escala 1-6)"]] = desg[["puntos AltScore en el clúster", "nivel NSE AltScore (escala 1-6)"]].astype(object)
+desg.loc[~en_zm.to_numpy(), ["puntos AltScore en el clúster", "nivel NSE AltScore (escala 1-6)"]] = SIN_ALT
+desg[["puntos AltScore en el clúster", "nivel NSE AltScore (escala 1-6)"]] = (
+    desg[["puntos AltScore en el clúster", "nivel NSE AltScore (escala 1-6)"]].astype(object).where(lambda t: t.notna(), "sin AltScore suficiente (< 5 puntos)"))
+desg.loc[desg["hogares 2025 en el clúster (300 m)"].eq(0), "nivel NSE INEGI (1 = D/E … 6 = A/B)"] = np.nan
+desg = desg.astype(object).where(desg.notna(), None)
+desg.loc[~okr.to_numpy(), "cómo se calcula"] = SIN_EST
+tiendas = pd.concat([tiendas, desg.reset_index(drop=True).set_index(tiendas.index)], axis=1)
 tiendas["acierta (como hoy)"] = np.where(tiendas["nuestra 1.ª letra (como hoy)"].isna(), SIN_EST,
                                          np.where(tiendas["nuestra 1.ª letra (como hoy)"] == tiendas["1.ª letra Nielsen"], "sí", "no"))
 tiendas["nuestra 1.ª letra (como hoy)"] = tiendas["nuestra 1.ª letra (como hoy)"].fillna(SIN_EST)
-con_est = tiendas["acierta (como hoy)"].ne(SIN_EST)
+tiendas = tiendas.astype(object).where(tiendas.notna(), SIN_EST)
+tiendas = tiendas.mask(tiendas.eq(SIN_EST), pd.DataFrame({c: MOTIVO.to_numpy() for c in tiendas}, index=tiendas.index))
+_c = list(tiendas.columns); _c.remove("acierta (como hoy)"); _c.insert(_c.index("nuestra 1.ª letra (como hoy)") + 1, "acierta (como hoy)")
+tiendas = tiendas[_c]
+con_est = pd.Series(okr.to_numpy(), index=tiendas.index)
 print(f"Tiendas: {len(tiendas):,}; {int(con_est.sum()):,} con nuestra estimación, que aciertan {(tiendas.loc[con_est, 'acierta (como hoy)'] == 'sí').mean():.0%}; "
       f"{int((~con_est).sum()):,} sin estimar.")
 display(tiendas[con_est].head(10))
 
+# hoja Resumen: lo que dice el QA, con las cifras de este notebook
+pe_ok = por_estado[por_estado["con nuestra estimación"] > 0]
+mejor_e, peor_e = pe_ok["% acierto como hoy"].idxmax(), pe_ok["% acierto como hoy"].idxmin()
+sin_e = MOTIVO[~okr].str.replace("sin estimar · ", "").value_counts()
+RESUMEN = pd.DataFrame([
+    ("Qué se compara", "La 1.ª y 2.ª letra de Golden Stores de Nielsen (Sueros FY'23, Región Sur) contra las nuestras. Nielsen es canal "
+     "Moderno (supermercados) y nosotros Tradicional: no hay tiendas en común, por eso se compara la zona de cada supermercado."),
+    ("QA 1 · tiendas alrededor (ZM Mérida)", f"La letra de la mayoría de nuestras tiendas Tradicional a 500 m acierta la Letra 1 en "
+     f"{g1.exactitud:.0%}, la Letra 2 en {g2.exactitud:.0%} y las dos a la vez en {g12.exactitud:.0%} ({int(g1.n)} supermercados)."),
+    ("QA 2 · punto geográfico (ZM Mérida)", f"Nuestro proceso de la Letra 1 en la coordenada del supermercado acierta {p06.exactitud:.0%} "
+     f"como hoy y {pmejor.exactitud:.0%} con el corte relativo ({int(p06.n)} supermercados)."),
+    ("QA 2 · punto geográfico (Región Sur)", f"{int(okr.sum()):,} de {len(nie):,} tiendas con estimación: como hoy {reg_hoy['exactitud']:.0%}, "
+     f"corte relativo {reg_rel['exactitud']:.0%}, referencia de Nielsen {reg_ref['exactitud']:.0%}."),
+    ("Dónde acertamos más y menos", f"Mejor estado: {mejor_e} ({pe_ok.loc[mejor_e, '% acierto como hoy']:.0f}%); peor: {peor_e} "
+     f"({pe_ok.loc[peor_e, '% acierto como hoy']:.0f}%). Detalle en la hoja 'Por estado'."),
+    ("Por qué falla 'como hoy'", f"Nuestro corte (media de nuestros PDV Tradicional de Mérida) marca H en {reg_hoy['% H nuestro']:.0f}% de "
+     f"las tiendas contra {reg_hoy['% H Nielsen']:.0f}% de Nielsen: el NSE de la zona sí coincide, la diferencia es dónde se corta."),
+    ("Validación del cálculo", f"En las 65 tiendas de la ZM Mérida el cálculo regional da el mismo nivel NSE que el del notebook 04 "
+     f"(ρ = {RHO_VAL:.2f})."),
+    ("Tiendas sin estimar", "ninguna" if okr.all() else
+     f"{int((~okr).sum())}: " + "; ".join(f"{n} {e}" for e, n in sin_e.items()) + "."),
+    ("Cómo leer el Excel", "'QA en %' = el % de acierto de cada forma de inferir la letra · 'Por estado' = lo mismo por estado · "
+     "'Tiendas' = cada tienda de Nielsen con su letra, la nuestra y de dónde sale (hogares, % por nivel NSE, nivel NSE, AltScore y corte)."),
+], columns=["tema", "resultado"])
+display(RESUMEN)
+
 wb = X.libro()
+X.hoja_tabla(wb, "Resumen", RESUMEN, titulo="QA contra Nielsen: resumen", ajustar=True, anchos={"tema": 36, "resultado": 120})
 X.hoja_tabla(wb, "QA en %", resumen, titulo="¿Cuánto le atinamos a las letras de Nielsen?", nota=NOTA, ajustar=True,
              formatos={"% de acierto": r"0\%"}, anchos={"QA": 26, "cómo se infiere la letra": 62, "letra": 34, "% de acierto": 14, "supermercados": 14})
 X.hoja_tabla(wb, "Tiendas", tiendas, titulo="Las 1,420 tiendas de Nielsen: su primera letra y la nuestra",
              nota="'Como hoy' = proceso de la Letra 1 del 06 en la coordenada de la tienda (ZM Mérida con AltScore; resto de la región solo INEGI).",
              formatos={"latitud": "0.000000", "longitud": "0.000000"},
-             anchos={"tienda Nielsen": 44, "colonia (Nielsen)": 28, "municipio": 26, "nuestra 1.ª letra (como hoy)": 34, "acierta (como hoy)": 34})
+             anchos={"tienda Nielsen": 44, "colonia (Nielsen)": 28, "municipio": 26, "nuestra 1.ª letra (como hoy)": 34, "acierta (como hoy)": 34,
+                     "estado": 22, "hexágono H3 res 9 (clúster)": 18, "cómo se calcula": 60})
+pe = por_estado.reset_index()
+pe["nivel NSE medio (1-6)"] = pe["nivel NSE medio (1-6)"].round(2)
+pe[pct_cols] = pe[pct_cols].round(0)
+pe = pe.astype(object).where(pe.notna(), SIN_EST)
+X.hoja_tabla(wb, "Por estado", pe, titulo="La primera letra por estado: cuántas tiendas y cuánto acertamos",
+             nota="Acierto = % de tiendas de Nielsen del estado con la misma 1.ª letra que la nuestra (solo tiendas con estimación).",
+             formatos={c: r"0\%" for c in pct_cols}, anchos={"Estado": 30})
 XLSX = OUT / f"QA_en_porcentaje_{C.CLIENTE}_{C.SLUG}.xlsx"
 try:
     wb.save(XLSX)

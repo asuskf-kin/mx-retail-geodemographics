@@ -11,7 +11,7 @@
 #   (hexágonos en vez de centroides de AGEB: más simple en geografías complejas). **AltScore mueve el NSE**: su índice alrededor
 #   del mismo centro se combina con el de INEGI con peso λ.
 # * **Letra 2 · Ventas del PDV** (regla del usuario, 2026-09-30). Cada PDV con venta tiene un **vector**: venta media y potencial,
-#   los dos del **CP** (con decimales), y **Rappi** = pedidos/mes medios de sueros Coca-Cola de las tiendas Rappi de su **buffer
+#   los dos del **CP** (con decimales), y **Rappi** = pedidos/mes medios de hidratación Coca-Cola (Powerade, Flashlyte, Vitamin Water) de las tiendas Rappi de su **buffer
 #   de 300 m** (suma ÷ número de tiendas; 0 si no hay). Cada variable pasa a su **rango percentil descendente** entre los PDV con
 #   venta (0 = el que más vende) y el **score** es su media ponderada con pesos **2 · 2 · 1** (Rappi pesa la mitad). **H si el
 #   score < 0.4**; si no, L. El PDV sin venta es **L** y no entra al ranking. Los rangos quitan las unidades: no hay que pasar
@@ -47,7 +47,7 @@
 # PDV según el CP (`PotentialQuantitative_CustomCat_sueros`, cajas/mes) y $CP_i$ = su potencial
 # (`PotentialQuantitativeFinal_CustomCat_sueros`, cajas/mes que le faltan frente a su comparable), **con decimales**. La clase del
 # CP (Very High → Low) sigue en el entregable. $B_i$ = tiendas físicas Rappi (00c: sueros e hidratación, ene-2025 → ago-2026) a
-# ≤ 300 m del PDV y $\text{venta}_r$ = sus **pedidos por mes de vida** de sueros Coca-Cola (Flashlyte; Powerade es isotónico y queda fuera) (no pesos; usuario, 2026-10-01). $\text{pct\_rank}_{\downarrow}$ = rango percentil
+# ≤ 300 m del PDV y $\text{venta}_r$ = sus **pedidos por mes de vida** de hidratación Coca-Cola (Powerade, Flashlyte, Glacéau Vitamin Water y Vitamin Water; usuario, 2026-10-05) (no pesos; usuario, 2026-10-01). $\text{pct\_rank}_{\downarrow}$ = rango percentil
 # descendente (1/n para el mayor, 1 para el menor; empates con rango medio), calculado sobre todos los PDV Tradicional con venta.
 # Pesos = `C.LETRA2_PESOS` y corte = `C.LETRA2_CORTE`. **Letra 2 sin Rappi**: la misma regla con pesos 2 · 2 · 0.
 #
@@ -135,10 +135,10 @@ mzg = gpd.read_file(C.PROC / f"manzanas_{C.SLUG}.gpkg")
 CRS = mzg.crs
 rp = pd.read_parquet(F_RAPPI)
 lin_rp = pd.read_parquet(C.PROC / f"rappi_hidratacion_lineas_{C.SLUG}.parquet")
-lin_rp["tomada"] = lin_rp.Product_Maker_Standard.eq(C.RAPPI_FABRICANTE) & lin_rp.subcategoria.isin(C.RAPPI_SUBCATEGORIAS_L2)
+lin_rp["tomada"] = lin_rp.Product_Maker_Standard.eq(C.RAPPI_FABRICANTE) & lin_rp.Product_Brand.isin(C.RAPPI_MARCAS_L2)   # usuario, 2026-10-05
 rp["pedidos_mes_hidratacion"] = rp.pedidos_mes                                   # referencia: todas las marcas, sueros e isotónicos
 rp["pedidos_tomados"] = rp.tienda_fisica.map(lin_rp[lin_rp.tomada].groupby("tienda_fisica").order_code.nunique()).fillna(0)
-rp["pedidos_mes"] = rp.pedidos_tomados / rp.meses_vida                            # lo que entra a la Letra 2: sueros Coca-Cola
+rp["pedidos_mes"] = rp.pedidos_tomados / rp.meses_vida                            # lo que entra a la Letra 2: hidratación Coca-Cola (RAPPI_MARCAS_L2)
 descargar_fuente(C.FUENTES["mg"])
 D_MG = extraer(C.ARCHIVOS["mg"])
 mun = gpd.read_file(next(D_MG.rglob(f"{C.ENT}mun.shp")))
@@ -674,7 +674,7 @@ plt.tight_layout(); plt.show()
 # ### 2.2 Rappi del buffer: pedidos/mes medios de las tiendas Rappi a ≤ 300 m del PDV
 #
 # **Qué se hace:** para cada PDV se toman las **tiendas físicas Rappi** del 00c (sueros e hidratación, ene-2025 → ago-2026) a
-# ≤ 300 m y se calcula $R_i$ = **suma de sus pedidos ÷ número de tiendas** (pedidos de sueros Coca-Cola —Flashlyte— por mes de vida). Si no
+# ≤ 300 m y se calcula $R_i$ = **suma de sus pedidos ÷ número de tiendas** (pedidos de hidratación Coca-Cola —Powerade, Flashlyte, Vitamin Water— por mes de vida). Si no
 # hay ninguna, $R_i = 0$. Se usan pedidos y no pesos (usuario, 2026-10-01): mide demanda, no precio ni tamaño del ticket.
 # Se guardan también cuántas tiendas hay, cuántas son activas y si alguna es Turbo (dark store).
 #
@@ -701,7 +701,7 @@ con_r = ob[ob.P == 1]
 RAPPI = (f"{len(rp)} tiendas físicas Rappi (sueros e hidratación; {int(rp.activa.sum())} activas con ≥ {THETA} pedidos) venden en la mediana "
          f"{rp.pedidos_mes.median():.1f} pedidos/mes (${rp.venta_mes.median():,.0f} MXN/mes). {len(con_r):,} PDV objetivo ({ob.P.mean():.1%}) tienen al menos una a ≤ {R300} m (mediana "
          f"{con_r.rappi_n.median():.0f} tiendas; Rappi del buffer mediana {con_r.rappi_media.median():.1f} pedidos/mes); el resto tiene Rappi = 0. "
-         f"{int((rp.pdv_con_venta_300m == 0).sum())} tiendas Rappi no tienen PDV Bepensa con venta a ≤ {R300} m.")
+         f"{int((rp.pdv_con_venta_300m == 0).sum())} tiendas Rappi no tienen PDV {C.CLIENTE_NOMBRE} con venta a ≤ {R300} m.")
 print(RAPPI)
 display(rp.sort_values("pedidos_mes", ascending=False)[["nombre", "tipo", "municipio", "pedidos_mes", "pedidos", "venta_mes", "% sueros", "turbo",
                                                       "activa", "pdv_con_venta_300m"]].head(15).round(1))
@@ -710,7 +710,7 @@ display(rp.sort_values("pedidos_mes", ascending=False)[["nombre", "tipo", "munic
 lin_rp["producto"] = np.where(lin_rp.Product_Maker_Standard.eq("COCA-COLA"), lin_rp.Product_Brand + " · " + lin_rp.Product_name.fillna("(sin nombre)"),
                               lin_rp.Product_Brand.astype(str) + " · competidor anonimizado (sin nombre ni SKU)")
 lin_rp["motivo"] = np.select([lin_rp.tomada, ~lin_rp.Product_Maker_Standard.eq(C.RAPPI_FABRICANTE)],
-                             ["entra: sueros Coca-Cola", f"fuera: no es {C.RAPPI_FABRICANTE.title()} (competidor)"],
+                             ["entra: hidratación Coca-Cola (" + ", ".join(C.RAPPI_MARCAS_L2) + ")", f"fuera: no es {C.RAPPI_FABRICANTE.title()} o no es una de sus marcas de hidratación"],
                              "fuera: es Coca-Cola pero no es suero (isotónico)")
 agg_ = dict(pedidos=("order_code", "nunique"), lineas=("order_code", "size"), unidades=("beverage_units", "sum"), tiendas=("tienda_fisica", "nunique"),
             meses=("mes", "nunique"), primer_mes=("mes", "min"), ultimo_mes=("mes", "max"))
@@ -725,7 +725,7 @@ tr_tienda = rp[["tienda_fisica", "nombre", "tipo", "municipio", "lat", "lon", "m
 reglas_rp = pd.DataFrame([("Universo", f"Rappi nacional → ZM {C.ZM_NOMBRE} por polígono, ventana {C.RAPPI_VENTANA[0]} → {C.RAPPI_VENTANA[1]} (00c)"),
                           ("Categoría", "sueros e hidratación con la regla 'sueros primero' (00c, rappi.clasificar)"),
                           ("Fabricante que entra", f"Product_Maker_Standard = {C.RAPPI_FABRICANTE} (config.RAPPI_FABRICANTE)"),
-                          ("Subcategoría que entra", ", ".join(C.RAPPI_SUBCATEGORIAS_L2) + " (config.RAPPI_SUBCATEGORIAS_L2)"),
+                          ("Marcas que entran", ", ".join(C.RAPPI_MARCAS_L2) + " (config.RAPPI_MARCAS_L2; cualquier subcategoría)"),
                           ("Por qué", "guiado por el CP: la categoría del cliente es sueros (CustomCat_sueros); Nielsen mide 'T. Sueros' vs 'Electrolit + Suerox'"),
                           ("Métrica", "pedidos únicos con al menos un producto que entra ÷ meses de vida de la tienda física"),
                           ("Resultado", f"{int(lin_rp.tomada.sum()):,} de {len(lin_rp):,} líneas entran ({lin_rp.tomada.mean():.0%}); "
@@ -776,7 +776,7 @@ if len(ej_r):
     MP.encuadre(ax[1], xr, yr, R300 * 1.5)
     ax[1].set_axis_off()
     ax[1].set_title(f"Ejemplo: {str(rr.Nombre)[:34]}\nRappi = {rr.rappi_suma:.1f} ÷ {rr.rappi_n} tiendas = {rr.rappi_media:.1f} pedidos/mes", fontsize=10)
-plt.suptitle(f"2.2 Rappi del buffer de {R300} m (sueros Coca-Cola, pedidos por mes)", x=0.01, ha="left")
+plt.suptitle(f"2.2 Rappi del buffer de {R300} m (hidratación Coca-Cola: Powerade, Flashlyte, Vitamin Water; pedidos por mes)", x=0.01, ha="left")
 plt.tight_layout(); plt.show()
 
 # %% [markdown]
@@ -853,13 +853,13 @@ d_tot, lo_tot, hi_tot = eda.cliff_bloques(ob.P == 1, ob.I_V_seg, [h3.cell_to_par
 m_r = ob[ob.P == 1]
 rho_r = stats.spearmanr(m_r.rappi_media, m_r.I_V_seg)
 display(respaldo.round(3))
-RESPALDO = (f"Venta Bepensa (índice por subcanal) con vs sin Rappi a {R300} m: δ = {d_tot:+.2f} (IC95 bloques [{lo_tot:+.2f}, {hi_tot:+.2f}]); "
-            f"entre los PDV con Rappi cerca, Rappi del buffer vs venta Bepensa: ρ = {rho_r[0]:+.2f} (p = {rho_r[1]:.2f}). "
-            + ("La venta Bepensa ya es mayor cerca de Rappi: Rappi va en la misma dirección." if lo_tot > 0 else
-               ("En total la venta Bepensa no es mayor cerca de Rappi" + (" (subcanales con IC que excluye 0: " + ", ".join(
+RESPALDO = (f"Venta {C.CLIENTE_NOMBRE} (índice por subcanal) con vs sin Rappi a {R300} m: δ = {d_tot:+.2f} (IC95 bloques [{lo_tot:+.2f}, {hi_tot:+.2f}]); "
+            f"entre los PDV con Rappi cerca, Rappi del buffer vs venta {C.CLIENTE_NOMBRE}: ρ = {rho_r[0]:+.2f} (p = {rho_r[1]:.2f}). "
+            + (f"La venta {C.CLIENTE_NOMBRE} ya es mayor cerca de Rappi: Rappi va en la misma dirección." if lo_tot > 0 else
+               (f"En total la venta {C.CLIENTE_NOMBRE} no es mayor cerca de Rappi" + (" (subcanales con IC que excluye 0: " + ", ".join(
                    f"{r_.subcanal.title()} δ = {r_['δ de Cliff']:+.2f}" for _, r_ in respaldo[respaldo["IC excluye 0"]].iterrows()) + ")"
                    if len(respaldo) and respaldo["IC excluye 0"].any() else "") + ": Rappi agrega información que la venta propia no tiene.")
-               if hi_tot >= 0 else "La venta Bepensa es MENOR cerca de Rappi: Rappi va contra la venta observada (revisar)."))
+               if hi_tot >= 0 else f"La venta {C.CLIENTE_NOMBRE} es MENOR cerca de Rappi: Rappi va contra la venta observada (revisar)."))
 print(RESPALDO)
 
 
@@ -913,7 +913,7 @@ for k_, seg in enumerate(segs):
         ax[0].boxplot(np.log1p(g.V[g.P == pp]), positions=[k_ + dx], widths=0.3, showfliers=False, patch_artist=True,
                       boxprops=dict(facecolor=col, alpha=0.45), medianprops=dict(color=eda.TINTA))
 ax[0].set_xticks(range(len(segs)), [s_.title()[:22] for s_ in segs], fontsize=7.5)
-ax[0].set(ylabel="log1p(cajas/mes)", title=f"Venta Bepensa sin (gris) y con (verde) tienda Rappi a {R300} m")
+ax[0].set(ylabel="log1p(cajas/mes)", title=f"Venta {C.CLIENTE_NOMBRE} sin (gris) y con (verde) tienda Rappi a {R300} m")
 ax[0].legend(handles=[Line2D([], [], color=eda.MUTED, lw=6, alpha=0.5), Line2D([], [], color=MP.COLOR_L2["H"], lw=6, alpha=0.5)],
              labels=[f"sin Rappi a {R300} m", "con Rappi"], loc="upper right")
 ss = sens.iloc[1:].sort_values("misma letra que la base (%)")
@@ -986,6 +986,22 @@ ids["letras"] = (ids.L1.fillna("") + ids.L2.fillna("")).where(ids.con_nse)      
 ids["letras_sin_rappi"] = (ids.L1.fillna("") + ids.L2_sin_rappi.fillna("")).where(ids.con_nse)
 ids["letras_base"] = (ids.L1_sin_alt.fillna("") + ids.L2_sin_rappi.fillna("")).where(ids.con_nse)   # solo INEGI + CP
 ids["accion"] = ids.letras.map(LT.ACCION).where(ids.con_venta, "sin venta (prospección)")
+# prioridad (usuario): con share de Coca-Cola de Whisp (paso 07) = Letra 1 × share (H bajo P1 · H alto P2 · L bajo P3 · L alto P4);
+# sin Whisp para el área o para el hexágono del PDV = por letras (HH P1 · HL P2 · LH P3 · LL P4), con o sin venta
+F_WHISP = C.PROC / f"whisp_share_{C.CLIENTE}_{C.SLUG}.parquet"
+WH = pd.read_parquet(F_WHISP).drop_duplicates("pos_id_cp").set_index("pos_id_cp") if F_WHISP.exists() else None
+USA_WHISP = WH is not None and bool(WH.whisp_disponible.any()) and WH.share_cajas.notna().any()
+for c_, w_ in [("share_ko", "share_cajas"), ("share_ko_revenue", "share_revenue"), ("indice_share", "indice_share"), ("share_clase", "share_clase")]:
+    ids[c_] = ids.pos_id_cp.map(WH[w_]) if USA_WHISP else np.nan
+pr_share = pd.Series([LT.PRIORIDAD_SHARE.get((l1, sc)) for l1, sc in zip(ids.L1, ids.share_clase)], index=ids.index)
+ids["prioridad"] = pr_share.where(pr_share.notna() & ids.con_nse, ids.letras.map(LT.PRIORIDAD))
+ids["fuente_prioridad"] = np.select([pr_share.notna() & ids.con_nse, ids.letras.notna()],
+                                    ["Letra 1 × share Whisp", "letras (Whisp sin datos para el área)" if not USA_WHISP else "letras (sin venta en Whisp en su hexágono)"],
+                                    "sin NSE")
+print(f"Prioridad: {'Letra 1 × share Whisp' if USA_WHISP else 'por letras (Whisp sin datos para ' + C.ZM_NOMBRE + ')'} · "
+      + " · ".join(f"{k} {v:,}" for k, v in ids.prioridad.value_counts().sort_index().items()))
+SHARE_AREA_TXT = (f"{WH.share_area.dropna().iloc[0]:.1%}" if USA_WHISP and "share_area" in WH else "ver el Excel del 07")
+ETQ = (lambda c: f"{c} · {LT.ACCION[c]}") if USA_WHISP else (lambda c: f"{c} · {LT.PRIORIDAD[c]} · {LT.ACCION[c]}")
 ids["accion_base"] = ids.letras_base.map(LT.ACCION)
 ob = ids[ids.objetivo]
 CL = ["HH", "HL", "LH", "LL"]
@@ -996,6 +1012,12 @@ panorama["% mix ventas"] = panorama.cajas / panorama.cajas.sum() * 100
 panorama["Index ventas"] = panorama.media / ob.V.mean() * 100
 panorama["% con Rappi"] = panorama.con_rappi * 100
 panorama.insert(0, "acción", [LT.ACCION[c] for c in CL])
+if not USA_WHISP:
+    panorama.insert(0, "prioridad", [LT.PRIORIDAD[c] for c in CL])
+PRIO_TAB = (pd.crosstab(ob.L1.rename("Letra 1"), ob.share_clase.fillna("sin dato Whisp").rename("share Whisp"), values=ob.pos_id_cp, aggfunc="count")
+            if USA_WHISP else None)
+if USA_WHISP:
+    display(PRIO_TAB)
 panorama = panorama.drop(columns=["con_rappi"])
 display(panorama.round(1))
 cruce = pd.crosstab(ob.letras_base.rename("letras base (INEGI + CP)"), ob.letras.rename("letras finales (con AltScore y Rappi)")).reindex(index=CL, columns=CL, fill_value=0)
@@ -1017,7 +1039,7 @@ MP.fondo(ax[0], mun, agebs=ageb_c)
 g = pts[ids.objetivo].join(ids[["letras"]])
 for c in ["LL", "LH", "HL", "HH"]:
     gg = g[g.letras == c]
-    gg.plot(ax=ax[0], color=MP.COLOR_CLUSTER[c], markersize=6 if c == "HH" else 4, alpha=0.85, label=f"{c} · {LT.ACCION[c]} ({len(gg):,})")
+    gg.plot(ax=ax[0], color=MP.COLOR_CLUSTER[c], markersize=6 if c == "HH" else 4, alpha=0.85, label=f"{ETQ(c)} ({len(gg):,})")
 ax[0].set_xlim(x0 - 1500, x1 + 1500); ax[0].set_ylim(y0 - 1500, y1 + 1500)
 ax[0].legend(loc="lower left", markerscale=2)
 ax[0].set_title("3. Letras finales por PDV: NSE de su clúster con AltScore (1.ª) + score de venta, CP y Rappi (2.ª)", fontsize=10)
@@ -1053,6 +1075,9 @@ l1_cl = ob.groupby("cluster_nse").L1.agg(lambda s: " · ".join(f"{k} {v}" for k,
 clv = cl[cl.hog > 0].copy()
 cl_js = pd.DataFrame({"N": clv.N.round(2), "alt": clv.alt.round(0), "Nf": clv.N_star.round(2), "n_pdv": clv.n_pdv, "hog": clv.hog.round(0),
                       "p_bajo": clv.p_bajo.round(0), "p_medio": clv.p_medio.round(0), "p_alto": clv.p_alto.round(0)}, index=clv.index)
+# Whisp (opcional): share de Coca-Cola por hexágono H3 res 6 para la capa y el paso de prioridad del mapa
+whisp_js = (WH[WH.share_cajas.notna()].groupby("hex6").agg(share=("share_cajas", "first"), clase=("share_clase", "first"))
+            .assign(share=lambda t: (t.share * 100).round(1)) if USA_WHISP else pd.DataFrame(columns=["share", "clase"]))
 clusters_js = pd.DataFrame({"cl": clv.index, "lat": clv.lat.round(6), "lon": clv.lon.round(6), "n_pdv": clv.n_pdv, "n_obj": clv.n_objetivo,
                             "hog": clv.hog.round(0), "N": clv.N.round(2), "clase": clv.clase, "abc": clv.abc.round(1), "censo": clv.censo.round(0),
                             "alt": clv.alt.round(0), "puntos": clv.alt_puntos, "N_alt": clv.N_alt.round(2), "Nf": clv.N_star.round(2),
@@ -1077,19 +1102,25 @@ POPUP = {"pdv": [("ID PDV", "id"), ("Nombre", "nombre"), ("Subcanal", "segmento"
                  ("Rango venta (0 = mejor)", "rV"), ("Rango CP", "rCP"), ("Rango Rappi", "rR"),
                  (f"Score = ({PESOS_L2['venta']}·venta + {PESOS_L2['cp']}·CP + {PESOS_L2['rappi']}·Rappi) / {sum(PESOS_L2.values())}", "S"), ("Score sin Rappi", "Ss"),
                  ("Letra 2 sin Rappi", "L2s"), ("Letra 2 con Rappi (final)", "L2"), ("Letras base (INEGI + CP)", "lb"), ("Letras finales", "letras"),
-                 ("Acción", "accion"), ("Clase CP", "clase_cp")],
+                 ("Share KO Whisp (hexágono res 6)", "share"), ("Share alto / bajo (vs área)", "share_clase"), ("Fuente de la prioridad", "fuente_prio"),
+                 ("Prioridad", "prioridad"), ("Acción", "accion"), ("Clase CP", "clase_cp")],
          "clusters": [("Clúster NSE (H3 res 9)", "cl"), ("PDV en el hexágono", "n_pdv"), ("PDV objetivo", "n_obj"),
                       ("Hogares del buffer de 300 m", "hog"), ("Nivel NSE INEGI (1-6)", "N"), ("NSE predominante", "clase"), ("% ABC+", "abc"),
                       ("Índice Censo (0-100)", "censo"), ("Índice AltScore (0-100)", "alt"), ("Puntos AltScore con índice en el buffer", "puntos"),
                       ("NSE AltScore en escala 1-6", "N_alt"), (f"Nivel NSE final = {1 - LAM:g}·INEGI + {LAM:g}·AltScore", "Nf"),
                       ("Letra 1 de sus PDV objetivo", "l1")],
-         "rappi": [("Tienda Rappi", "nombre"), ("Tipo", "tipo"), ("Municipio", "municipio"), ("Pedidos/mes de sueros Coca-Cola (Flashlyte)", "pedidos_mes"),
+         "rappi": [("Tienda Rappi", "nombre"), ("Tipo", "tipo"), ("Municipio", "municipio"), ("Pedidos/mes de hidratación Coca-Cola (Powerade, Flashlyte, Vitamin Water)", "pedidos_mes"),
                    ("Venta sueros e hidratación (MXN/mes)", "venta_mes"),
                    ("de sueros (MXN/mes)", "venta_sueros_mes"), ("PDV con venta a 300 m", "pdv_con_venta_300m"),
                    ("Pedidos en la ventana", "pedidos"), ("% sueros", "% sueros"), ("% Coca-Cola", "% Coca-Cola"),
                    (f"Activa (≥ {THETA} pedidos)", "activa"), ("Turbo (dark store)", "turbo")]}
 EXTRA_CL = [["PDV del hexágono", "n_pdv"], ["Hogares del buffer", "hog"], ["Nivel INEGI", "N"], ["Índice AltScore", "alt"], ["Nivel final", "Nf"]]
+COLOR_PRIO = {"P1": MP.COLOR_CLUSTER["HH"], "P2": MP.COLOR_CLUSTER["HL"], "P3": MP.COLOR_CLUSTER["LH"], "P4": MP.COLOR_CLUSTER["LL"]}
+ETQ_PRIO = ({"P1": "P1 · Letra 1 H y share Coca-Cola bajo", "P2": "P2 · Letra 1 H y share alto", "P3": "P3 · Letra 1 L y share bajo",
+             "P4": "P4 · Letra 1 L y share alto"} if USA_WHISP else {k: f"{k} · {c}" for c, k in LT.PRIORIDAD.items()})
 CAPAS = [
+    {"id": "pdv_prio", "nombre": "PDV: prioridad " + ("(Letra 1 × share Whisp)" if USA_WHISP else "(por letras)"), "tipo": "puntos",
+     "dataset": "pdv", "campo": "prioridad", "radio_px": 5, "escala": {"tipo": "categorica", "colores": COLOR_PRIO, "etiquetas": ETQ_PRIO}},
     {"id": "municipios", "nombre": "Límite municipal", "tipo": "contorno", "fuente": "municipios", "siempre": True},
     {"id": "ageb_N", "nombre": "Nivel NSE de la AGEB (media 1-6)", "tipo": "poligonos", "fuente": "agebs", "campo": "N", "etiqueta": "CVEGEO", "escala": ESC_NSE,
      "distribucion": DIST_NSE3},
@@ -1126,10 +1157,15 @@ CAPAS = [
     {"id": "pdv_L2", "nombre": "PDV: Letra 2 (score de venta, CP y Rappi)", "tipo": "puntos", "dataset": "pdv", "campo": "L2", "radio_px": 5,
      "escala": {"tipo": "categorica", "colores": MP.COLOR_L2, "etiquetas": {"H": f"H · score < {CORTE}", "L": "L (o sin venta)"}}},
     {"id": "pdv_cl", "nombre": "PDV: letras finales y acción Golden Stores", "tipo": "puntos", "dataset": "pdv", "campo": "letras", "radio_px": 5,
-     "escala": {"tipo": "categorica", "colores": MP.COLOR_CLUSTER, "etiquetas": {k: f"{k} · {LT.ACCION[k]}" for k in CL}}},
+     "escala": {"tipo": "categorica", "colores": MP.COLOR_CLUSTER, "etiquetas": {k: ETQ(k) for k in CL}}},
     {"id": "pdv_base", "nombre": "PDV: letras base (INEGI + CP, sin AltScore ni Rappi)", "tipo": "puntos", "dataset": "pdv", "campo": "lb", "radio_px": 5,
-     "escala": {"tipo": "categorica", "colores": MP.COLOR_CLUSTER, "etiquetas": {k: f"{k} · {LT.ACCION[k]}" for k in CL}}},
+     "escala": {"tipo": "categorica", "colores": MP.COLOR_CLUSTER, "etiquetas": {k: ETQ(k) for k in CL}}},
 ]
+if USA_WHISP:
+    CAPAS.append({"id": "wh_share", "nombre": "Whisp: share de Coca-Cola por hexágono res 6 (vs el área)", "tipo": "hex", "fuente": "wh",
+                  "campo": "clase", "borde": True, "opacidad": 0.35, "extra": [["share Coca-Cola (%)", "share"]],
+                  "escala": {"tipo": "categorica", "colores": {"bajo": "#e34948", "alto": "#1baf7a"},
+                             "etiquetas": {"bajo": "share bajo (< share del área)", "alto": "share alto (≥ share del área)"}}})
 
 
 def pct(s, cond):
@@ -1172,9 +1208,9 @@ def pasos_qa(s):
          "porque": "Regla del usuario: solo datos del CP. El potencial va con decimales: redondear hacia abajo subestimaba la venta.",
          "formula": "V_i = PotentialQuantitative ;  CP_i = PotentialQuantitativeFinal"},
         {"titulo": "2.2 Rappi del buffer (300 m)", "capas": ["rappi_300", "pdv_R", "rappi"],
-         "que": f"Rappi de cada PDV = pedidos/mes medios de sueros Coca-Cola (Flashlyte) de las tiendas Rappi a ≤ {R300} m (rojo = activa, ≥ {THETA} pedidos; gris = esporádica). "
+         "que": f"Rappi de cada PDV = pedidos/mes medios de hidratación Coca-Cola (Powerade, Flashlyte, Vitamin Water) de las tiendas Rappi a ≤ {R300} m (rojo = activa, ≥ {THETA} pedidos; gris = esporádica). "
                 "Clic en un PDV: su buffer (negro punteado) y las tiendas Rappi dentro (anillos rojos).",
-         "porque": "Rappi es demanda observada de la categoría que Bepensa no ve. Se usa la media (no la suma) y en pedidos, no pesos: mide demanda, no precio.",
+         "porque": f"Rappi es demanda observada de la categoría que {C.CLIENTE_NOMBRE} no ve. Se usa la media (no la suma) y en pedidos, no pesos: mide demanda, no precio.",
          "formula": f"R_i = Σ_{{r ∈ B_i}} pedidos/mes_r / |B_i| ;  B_i = tiendas Rappi a ≤ {R300} m ;  R_i = 0 si no hay",
          "cifras": f"{(o.Rmed[o.V.notna()] > 0).mean():.1%} de los PDV con venta tienen Rappi a {R300} m (mediana {o.Rmed[o.Rmed > 0].median():.1f} pedidos/mes)."},
         {"titulo": "2.3 Score sin Rappi (venta y CP)", "capas": ["pdv_Ls"],
@@ -1194,27 +1230,45 @@ def pasos_qa(s):
          "que": "Las mismas letras sin AltScore ni Rappi: Letra 1 solo con INEGI y Letra 2 solo con la venta media y el CP.",
          "porque": "Muestra qué PDV cambian de acción por las dos fuentes que mueven las letras.",
          "cifras": f"mismas letras en {pct(o.letras[o.V.notna()], o.letras[o.V.notna()].eq(o.lb[o.V.notna()]))} de los PDV objetivo."},
+        ({"titulo": "4. Prioridad: Letra 1 × share Whisp", "capas": ["wh_share", "pdv_prio"],
+          "que": "Share de Coca-Cola (cajas unidad de sueros e isotónicos, Whisp) del hexágono H3 res 6 de cada PDV, alto si es ≥ el del área. "
+                 "La prioridad cruza la demanda (Letra 1) con ese share; la Letra 2 no la cambia.",
+          "porque": "Primero la demanda alta donde Coca-Cola tiene menos share (más espacio para crecer). Sin venta Whisp en su hexágono, la prioridad sale de las letras.",
+          "formula": "H·bajo P1 · H·alto P2 · L·bajo P3 · L·alto P4 ;  share = cajas KO / cajas totales del hexágono",
+          "cifras": " · ".join(f"{k} {(s.prioridad == k).sum():,}" for k in ["P1", "P2", "P3", "P4"])
+                    + f" PDV · share de Coca-Cola del área {SHARE_AREA_TXT}"}
+         if USA_WHISP else
+         {"titulo": "4. Prioridad por letras", "capas": ["pdv_prio"],
+          "que": "Sin datos de Whisp para el área, la prioridad sale de las letras: primero la demanda (Letra 1), después la venta (Letra 2).",
+          "porque": "Regla del usuario: HH P1 · HL P2 · LH P3 · LL P4.", "formula": "HH P1 · HL P2 · LH P3 · LL P4",
+          "cifras": " · ".join(f"{k} {(s.prioridad == k).sum():,}" for k in ["P1", "P2", "P3", "P4"]) + " PDV"}),
     ]
 
 
 g = ids[ids.con_nse]
 si_no = {True: "Sí", False: "No"}
-pdv_js = pd.DataFrame({
-    "id": g.pos_id_cp.astype(str), "nombre": g.Nombre.astype(str).str.replace("ABARRROTES", "ABARROTES"), "segmento": g.segmento,
-    "lat": g.Latitud.round(6), "lon": g.Longitud.round(6), "cl": g.cluster_nse, "ncln": g.n_cluster_nse, "dcen": g.dist_centro_m.round(0),
-    "hog": g.HH_cluster.round(0), "N_punto": g.N_punto.round(2), "N_ageb": g.N_ageb.round(2), "Ni": g.N_inegi.round(2), "clase": g.nse_clase,
-    "pb": g.nse_bajo.round(0), "pm": g.nse_medio.round(0), "pa": g.nse_alto.round(0), "abc": g.abc.round(1), "censo": g.censo_area.round(0),
-    "alt": g.alt_cluster.round(0), "N_alt": g.N_alt.round(2), "N": g.N.round(2), "I_N": g.I_N.round(0), "L1": g.L1, "L1s": g.L1_sin_alt,
-    "altc": pd.Series(np.select([g.sube_por_alt, g.baja_por_alt], ["sube a H", "baja a L"], "no"), index=g.index).where(g.objetivo),
-    "conf": pd.Series(g.nse_confirmado, index=g.index).map(si_no), "V": g.V.round(2), "CP": g.CP.round(2),
-    "nR": g.rappi_n, "Rmed": g.rappi_media.round(2), "Rs": g.rappi_suma.round(2), "R": g.rappi_venta.round(0), "P": g.P, "Ptxt": (g.rappi_n > 0).map({True: "sí", False: "no"}),
-    "rV": g.r_V.round(3), "rCP": g.r_CP.round(3), "rR": g.r_R.round(3), "S": g.score.round(3), "Ss": g.score_sin_rappi.round(3),
-    "L2": g.L2, "L2s": g.L2_sin_rappi, "letras": g.letras, "lb": g.letras_base,
-    "accion": g.accion, "clase_cp": g.clase_cp, "sube": g.sube_por_rappi, "baja": g.baja_por_rappi})
+def ficha_pdv(g):
+    """Columnas de la ficha del PDV en el mapa HTML (las mismas van al Excel reducido)."""
+    return pd.DataFrame({
+        "id": g.pos_id_cp.astype(str), "nombre": g.Nombre.astype(str).str.replace("ABARRROTES", "ABARROTES"), "segmento": g.segmento,
+        "lat": g.Latitud.round(6), "lon": g.Longitud.round(6), "cl": g.cluster_nse, "ncln": g.n_cluster_nse, "dcen": g.dist_centro_m.round(0),
+        "hog": g.HH_cluster.round(0), "N_punto": g.N_punto.round(2), "N_ageb": g.N_ageb.round(2), "Ni": g.N_inegi.round(2), "clase": g.nse_clase,
+        "pb": g.nse_bajo.round(0), "pm": g.nse_medio.round(0), "pa": g.nse_alto.round(0), "abc": g.abc.round(1), "censo": g.censo_area.round(0),
+        "alt": g.alt_cluster.round(0), "N_alt": g.N_alt.round(2), "N": g.N.round(2), "I_N": g.I_N.round(0), "L1": g.L1, "L1s": g.L1_sin_alt,
+        "altc": pd.Series(np.select([g.sube_por_alt, g.baja_por_alt], ["sube a H", "baja a L"], "no"), index=g.index).where(g.objetivo),
+        "conf": pd.Series(g.nse_confirmado, index=g.index).map(si_no), "V": g.V.round(2), "CP": g.CP.round(2),
+        "nR": g.rappi_n, "Rmed": g.rappi_media.round(2), "Rs": g.rappi_suma.round(2), "R": g.rappi_venta.round(0), "P": g.P, "Ptxt": (g.rappi_n > 0).map({True: "sí", False: "no"}),
+        "rV": g.r_V.round(3), "rCP": g.r_CP.round(3), "rR": g.r_R.round(3), "S": g.score.round(3), "Ss": g.score_sin_rappi.round(3),
+        "L2": g.L2, "L2s": g.L2_sin_rappi, "letras": g.letras, "lb": g.letras_base,
+        "accion": g.accion, "prioridad": g.prioridad, "share": g.share_ko.round(3), "share_clase": g.share_clase, "fuente_prio": g.fuente_prioridad,
+        "clase_cp": g.clase_cp, "sube": g.sube_por_rappi, "baja": g.baja_por_rappi})
+
+
+pdv_js = ficha_pdv(g)
 MAPA_QA = C.OUT / f"06_mapa_qa_letras_{C.CLIENTE}_{C.SLUG}.html"
-MP.mapa_html(MAPA_QA, "QA de las letras · canal Tradicional", f"{C.CLIENTE.title()} · {C.ZM_NOMBRE} · sueros e hidratación · clúster NSE H3 res {RES_CL} + {R300} m",
+MP.mapa_html(MAPA_QA, "Letras por punto de venta · canal Tradicional", f"{C.CLIENTE.title()} · {C.ZM_NOMBRE} · sueros e hidratación · clúster NSE H3 res {RES_CL} + {R300} m",
              (g.Latitud.median(), g.Longitud.median()), {"pdv": pdv_js, "clusters": clusters_js, "rappi": rappi_js, "bepensa": bepensa_js}, CAPAS,
-             pasos_qa(pdv_js), POPUP, hexagonos={"hex": hex_js, "cl": cl_js}, poligonos={"agebs": ageb_js, "municipios": mun_js}, radio_m=R300,
+             pasos_qa(pdv_js), POPUP, hexagonos={"hex": hex_js, "cl": cl_js, **({"wh": whisp_js} if USA_WHISP else {})}, poligonos={"agebs": ageb_js, "municipios": mun_js}, radio_m=R300,
              filtro={"dataset": "pdv", "campo": "segmento", "valores": SUBCANALES, "etiqueta": "Subcanal"},
              distribucion_popup={"pdv": {"titulo": "Hogares de su clúster NSE (buffer de 300 m desde el centro)",
                                          "partes": [[e, k, col] for (e, _, col), k in zip(DIST_NSE3, ["pb", "pm", "pa"])]},
@@ -1229,8 +1283,9 @@ print(f"Mapa: {MAPA_QA.name} ({MAPA_QA.stat().st_size / 1e6:.1f} MB, {len(pdv_js
 # ## 5. Entregable Excel para el cliente (canal Tradicional): de dónde sale cada columna
 #
 # Estructura pedida por el usuario (2026-09-30): `pos_id` · **AltScore** · **datos gubernamentales (INEGI)** · **ventas** (venta
-# media y CP del CP, Rappi del buffer, rangos y score) · **clúster** (NSE) · **letra 1** · **letra 2** (el share
-# y su priorización se omiten por ahora) y, al final, las letras juntas con su acción Golden Stores. Cada letra va **sin y
+# media y CP del CP, Rappi del buffer, rangos y score) · **clúster** (NSE) · **letra 1** · **letra 2** y, al final, las
+# letras juntas con su acción Golden Stores y su **prioridad** (usuario, 2026-10-02: primero la demanda, luego la venta:
+# HH P1 · HL P2 · LH P3 · LL P4; el share sigue omitido). Cada letra va **sin y
 # con** su fuente adicional. Una tercera fila de encabezado dice **de dónde sale** cada columna y la hoja **Fuentes** lo
 # detalla con su cálculo. Va a la carpeta del cliente (`outputs/<ciudad>/<cliente>/cliente/`).
 
@@ -1272,14 +1327,15 @@ FORMULAS = [
     ("Letra 2 · Score de rangos de venta, CP y Rappi (regla del usuario, 2026-09-30)", [
         "V_i = venta media del PDV según el CP: PotentialQuantitative_CustomCat_sueros (cajas/mes). Solo datos del CP.",
         "CP_i = PotentialQuantitativeFinal_CustomCat_sueros (cajas/mes que le faltan frente a su PDV comparable), con decimales.",
-        f"R_i = pedidos/mes medios de las tiendas físicas Rappi a ≤ {R300} m del PDV: suma de sus pedidos de sueros Coca-Cola (Flashlyte) por mes de vida ("
+        f"R_i = pedidos/mes medios de las tiendas físicas Rappi a ≤ {R300} m del PDV: suma de sus pedidos de hidratación Coca-Cola (Powerade, Flashlyte, Vitamin Water) por mes de vida ("
         "ene-2025 → ago-2026) ÷ número de tiendas; 0 si no hay ninguna.",
         "r^x_i = rango percentil descendente de x entre todos los PDV Tradicional con venta: 1/n para el mayor, 1 para el menor; los empates toman el rango medio.",
         f"S_i = ({PESOS_L2['venta']} · r^V + {PESOS_L2['cp']} · r^CP + {PESOS_L2['rappi']} · r^R) / {sum(PESOS_L2.values())}: Rappi pesa la mitad que la venta y el CP.",
         f"Letra 2 = H si S_i < {CORTE}; en otro caso L. El PDV sin venta es L y no entra al ranking.",
         f"Letra 2 sin Rappi = la misma regla con pesos {PESOS_L2['venta']} · {PESOS_L2['cp']} · 0."]),
     ("Letras juntas", ["Letras finales = Letra 1 (con AltScore) + Letra 2 (con Rappi); letras base = Letra 1 sin AltScore + Letra 2 sin Rappi (solo INEGI + CP).",
-                       "Acción fija de Golden Stores: HH Atacar · HL Bloquear · LH Fortalecer · LL Mantener."]),
+                       "Acción fija de Golden Stores: HH Atacar · HL Bloquear · LH Fortalecer · LL Mantener.",
+                       "Prioridad (primero la demanda, Letra 1; luego la venta, Letra 2): HH P1 · HL P2 · LH P3 · LL P4. Sale solo de las letras: el PDV sin venta también la tiene (su Letra 2 es L)."]),
     ("Parámetros (src/config.py)", [f"RADIO_PDV_M = {R300} · NSE_CLUSTER_RES = {RES_CL} · H3_RES = {C.H3_RES} · ALTSCORE_PESO_NSE (λ) = {LAM:g} · ALTSCORE_MIN_PUNTOS = {MIN_ALT} · "
                                     f"LETRA2_PESOS = {PESOS_L2} · LETRA2_CORTE = {CORTE} · RAPPI_MIN_PEDIDOS (θ) = {THETA} · FRONTERA = {FR} · "
                                     f"CP_UMBRAL_REDONDEO = {C.CP_UMBRAL_REDONDEO} (solo QA)."]),
@@ -1306,11 +1362,11 @@ def tabla_pdv(d):
         ORIGEN[(bloque, nombre)] = origen
 
     P_ = "Punto de venta (CP)"
-    col(P_, "pos_id", d.pos_id_cp, "CP Bepensa (pos_id)")
-    col(P_, "Nombre", d.Nombre.astype(str).str.replace("ABARRROTES", "ABARROTES"), "CP Bepensa (pos_name)")
-    col(P_, "Subcanal", d.Subcanal, "CP Bepensa (pos_subchannel)")
-    col(P_, "Latitud", d.Latitud, "CP Bepensa (pos_latitude, limpia en el 00)")
-    col(P_, "Longitud", d.Longitud, "CP Bepensa (pos_longitude, limpia en el 00)")
+    col(P_, "pos_id", d.pos_id_cp, f"CP {C.CLIENTE_NOMBRE} (pos_id)")
+    col(P_, "Nombre", d.Nombre.astype(str).str.replace("ABARRROTES", "ABARROTES"), f"CP {C.CLIENTE_NOMBRE} (pos_name)")
+    col(P_, "Subcanal", d.Subcanal, f"CP {C.CLIENTE_NOMBRE} (pos_subchannel)")
+    col(P_, "Latitud", d.Latitud, f"CP {C.CLIENTE_NOMBRE} (pos_latitude, limpia en el 00)")
+    col(P_, "Longitud", d.Longitud, f"CP {C.CLIENTE_NOMBRE} (pos_longitude, limpia en el 00)")
     for nombre, c_ in ALT_COLS.items():
         valores = d[c_].round(3) if c_ in d.columns else pd.Series(np.nan, index=d.index)
         origen = {"alt_cluster": f"AltScore · PC1 de {', '.join(PROX_ALT) or 'sus proxies'} (00b), media de sus puntos a ≤ {R300} m del centro del clúster",
@@ -1333,9 +1389,9 @@ def tabla_pdv(d):
     col(GOB, "Índice Censo por manzana (0-100)", d.censo_area.round(0), "INEGI Censo 2020 · auto, PC, internet, escolaridad")
     col(GOB, "NSE confirmado por el Censo", pd.Series(d.nse_confirmado, index=d.index).map(si_no).fillna(pd.Series(np.where(d.con_nse, "sin dato del Censo (manzanas protegidas)", SIN_NSE), index=d.index)),
         "letra con el Censo = letra 1 final; sin dato si las manzanas del clúster tienen dato protegido")
-    col(VEN, "Venta media (cajas/mes)", d.V.round(2), "CP Bepensa · PotentialQuantitative_CustomCat_sueros")
-    col(VEN, "CP · potencial (cajas/mes)", d.CP.round(2), "CP Bepensa · PotentialQuantitativeFinal_CustomCat_sueros (con decimales)")
-    col(VEN, "CP · clase de potencial", d.clase_cp.fillna("sin venta"), "CP Bepensa · PotentialQualitative_CustomCat_sueros")
+    col(VEN, "Venta media (cajas/mes)", d.V.round(2), f"CP {C.CLIENTE_NOMBRE} · PotentialQuantitative_CustomCat_sueros")
+    col(VEN, "CP · potencial (cajas/mes)", d.CP.round(2), f"CP {C.CLIENTE_NOMBRE} · PotentialQuantitativeFinal_CustomCat_sueros (con decimales)")
+    col(VEN, "CP · clase de potencial", d.clase_cp.fillna("sin venta"), f"CP {C.CLIENTE_NOMBRE} · PotentialQualitative_CustomCat_sueros")
     col(VEN, "Rappi · tiendas a 300 m", d.rappi_n, "Rappi (00c) · tiendas físicas de sueros e hidratación a ≤ 300 m del PDV")
     col(VEN, "Rappi · tiendas activas a 300 m", d.rappi_activas, f"Rappi · ≥ {THETA} pedidos de sueros o derivados")
     col(VEN, "Rappi · pedidos/mes totales del buffer", d.rappi_suma.round(2), "Rappi · suma de los pedidos/mes de sus tiendas a ≤ 300 m")
@@ -1362,7 +1418,26 @@ def tabla_pdv(d):
     col("Clasificación", "Letras base (INEGI + CP)", d.letras_base.fillna(SIN_NSE), "letra 1 sin AltScore + letra 2 sin Rappi")
     col("Clasificación", "Letras (final)", d.letras.fillna(SIN_NSE), "letra 1 con AltScore + letra 2 con Rappi")
     col("Clasificación", "Acción Golden Stores", d.accion.fillna(SIN_NSE), "HH Atacar · HL Bloquear · LH Fortalecer · LL Mantener")
+    sin_w = "sin dato Whisp (sin datos para el área)" if not USA_WHISP else "sin dato Whisp (sin ventas en su hexágono)"
+    col("Clasificación", "Share KO Whisp (hexágono res 6)", d.share_ko.round(4).astype(object).where(d.share_ko.notna(), sin_w),
+        f"Whisp · cajas unidad {C.WHISP_KO} / total del hexágono res 6, {C.WHISP_VENTANA[0]}–{C.WHISP_VENTANA[1]} (paso 07)")
+    col("Clasificación", "Share alto / bajo (vs área)", d.share_clase.astype(object).where(d.share_clase.notna(), sin_w),
+        "alto si el share del hexágono ≥ share de toda el área (índice 100)")
+    col("Clasificación", "Fuente de la prioridad", d.fuente_prioridad, "Letra 1 × share Whisp si hay share; si no, por letras")
+    col("Clasificación", "Prioridad", d.prioridad.fillna(SIN_NSE),
+        "con share Whisp: H bajo P1 · H alto P2 · L bajo P3 · L alto P4; sin share: HH P1 · HL P2 · LH P3 · LL P4")
     t = pd.DataFrame(b)
+    # ninguna celda vacía sin motivo: cada columna con faltantes dice por qué (si no tiene razón propia, sin venta o sin NSE)
+    razon = {"Índice NSE AltScore del clúster (0-100)": "sin AltScore (sin puntos con índice en el buffer)",
+             "NSE AltScore en escala 1-6": f"no aplica · AltScore con < {C.ALTSCORE_MIN_PUNTOS} puntos o sin NSE",
+             "NSE del punto (hexágono res 10)": "sin hogares en su hexágono (zona comercial)",
+             "NSE de su AGEB": "fuera de AGEB urbana",
+             "Índice Censo por manzana (0-100)": "sin manzanas del Censo con dato en el clúster"}
+    for k_ in t.columns:
+        if t[k_].isna().any():
+            por_defecto = ("sin dato AltScore en el buffer del clúster" if k_[0] == ALT_BLOQUE
+                           else pd.Series(motivo.to_numpy(), index=t.index))
+            t[k_] = t[k_].astype(object).where(t[k_].notna(), razon.get(k_[1], por_defecto))
     t.columns = pd.MultiIndex.from_tuples(t.columns)
     return t
 
@@ -1392,7 +1467,7 @@ X.hoja_tabla_2niveles(wb, "Letras por PDV", TABLA, titulo="Letras por punto de v
                       formatos=FMT, anchos={"Nombre": 30}, colores_grupo=COLORES, fijar_cols=2,
                       fuentes={k: v for k, v in ORIGEN.items() if k in set(TABLA.columns)})
 X.hoja_tabla(wb, "Fuentes", fuentes, titulo="De dónde sale cada columna del entregable",
-             nota="Fuentes: CP de Bepensa (PDV, venta y potencial) · INEGI (Censo 2020, ITER, Marco Geoestadístico, ENIGH 2024, Intercensal 2025) · AltScore · Rappi.",
+             nota=f"Fuentes: CP de {C.CLIENTE_NOMBRE} (PDV, venta y potencial) · INEGI (Censo 2020, ITER, Marco Geoestadístico, ENIGH 2024, Intercensal 2025) · AltScore · Rappi.",
              anchos={"bloque": 44, "columna": 44, "de dónde sale": 70})
 X.hoja_texto(wb, "Fórmulas", FORMULAS)
 X.hoja_tabla(wb, "Resumen", panorama.reset_index().rename(columns={"letras": "Letras"}).round(1), titulo="Letras finales y acción Golden Stores · canal Tradicional",
@@ -1414,13 +1489,13 @@ X.hoja_tabla(wb, "Vector Letra 2", vector.round(4), titulo="Tabla intermedia de 
 X.hoja_tabla(wb, "Sensibilidad Letra 2", sens.round(2), titulo="Sensibilidad de la Letra 2: pesos, corte, tiendas Rappi, CP redondeado y empates",
              nota=SENS, anchos={"variante": 52})
 if len(respaldo):
-    X.hoja_tabla(wb, "Respaldo Rappi", respaldo.round(3), titulo="Venta Bepensa con y sin tienda Rappi a 300 m, por subcanal",
+    X.hoja_tabla(wb, "Respaldo Rappi", respaldo.round(3), titulo=f"Venta {C.CLIENTE_NOMBRE} con y sin tienda Rappi a 300 m, por subcanal",
                  nota="δ de Cliff sobre log1p(cajas/mes); IC95 por bootstrap de bloques H3 res 7.", anchos={"subcanal": 40})
 X.hoja_tabla(wb, "Tiendas Rappi", rp.assign(turbo=rp.turbo.map(si_no), activa=rp.activa.map(si_no))[
     ["nombre", "tipo", "municipio", "lat", "lon", "pedidos_mes", "pedidos", "venta_mes", "venta_sueros_mes", "% sueros", "% Coca-Cola", "activa", "turbo",
      "pdv_con_venta_300m"]].round({"lat": 6, "lon": 6}).round(1).sort_values("pedidos_mes", ascending=False),
              titulo="Tiendas físicas Rappi (sueros e hidratación): su venta y los PDV con venta a 300 m",
-             nota=f"pedidos_mes = pedidos con sueros Coca-Cola (Flashlyte) / meses de vida (detalle en 06_rappi_productos_tomados). El Rappi de cada PDV es la media de pedidos_mes de las tiendas a ≤ {R300} m.",
+             nota=f"pedidos_mes = pedidos con hidratación Coca-Cola (Powerade, Flashlyte, Vitamin Water) / meses de vida (detalle en 06_rappi_productos_tomados). El Rappi de cada PDV es la media de pedidos_mes de las tiendas a ≤ {R300} m.",
              formatos={"venta_mes": "#,##0", "venta_sueros_mes": "#,##0", "lat": "0.000000", "lon": "0.000000"}, barras=["pedidos_mes"], anchos={"nombre": 42})
 sin = d[d.con_venta & ~d.con_nse][["pos_id_cp", "Nombre", "Subcanal", "Latitud", "Longitud", "Municipio", "cluster_nse", "V"]]
 X.hoja_tabla(wb, "Sin NSE en su clúster", sin.round(4), titulo="PDV con venta cuyo clúster NSE no tiene hogares a 300 m (no reciben letras)",
@@ -1447,13 +1522,134 @@ X.portada(wb, "Letras por punto de venta", f"Canal Tradicional · {C.CLIENTE.tit
            ("Sin NSE en su clúster", "PDV excluidos."), ("Hallazgos", "Qué se encontró y qué implica.")])
 XLSX = C.OUT_CLIENTE / f"06_letras_nse_ventas_tradicional_{C.CLIENTE}_{C.SLUG}.xlsx"
 wb.save(XLSX)
+
+# entregable final (formato del usuario, 2026-10-02): las 6 primeras columnas tal cual vienen del CP; después solo las letras
+# finales, la prioridad por letras (HH P1 · HL P2 · LH P3 · LL P4) y la acción Golden Stores. Una fila por PDV Tradicional.
+from openpyxl.styles import Font as _Font
+cp_cols = ["PotentialQuantitative_TotalPortafolio", "PotentialQuantitativeFinal_TotalPortafolio", "PotentialQualitative_TotalPortafolio"]
+cp_ = pdv0.reindex(ids.pos_id_cp)
+FINAL = pd.DataFrame({"pos_id": ids.pos_id_cp.to_numpy(), "lat": cp_.lat.to_numpy(), "lon": cp_.lon.to_numpy(),
+                      # el CP viene vacío en los PDV sin venta: se dice el motivo (ninguna celda vacía sin motivo)
+                      **{c: cp_[c].astype(object).where(cp_[c].notna(), "sin dato en el CP (PDV sin venta)").to_numpy() for c in cp_cols},
+                      "segmento_golden_store": ids.letras.fillna(SIN_NSE).to_numpy(),
+                      "prioridad": ids.prioridad.fillna(SIN_NSE).to_numpy(),
+                      "accion": ids.accion.fillna(SIN_NSE).to_numpy()}).sort_values("pos_id")
+assert FINAL.pos_id.is_unique and FINAL.notna().all().all()
+XLSX_FINAL = C.OUT_CLIENTE / f"06_entregable_final_letras_{C.CLIENTE}_{C.SLUG}.xlsx"
+with pd.ExcelWriter(XLSX_FINAL, engine="openpyxl") as xw:
+    FINAL.to_excel(xw, sheet_name="Entregable", index=False)
+    ws = xw.sheets["Entregable"]
+    ws.freeze_panes = "A2"
+    for j, c in enumerate(FINAL.columns, 1):
+        ws.cell(1, j).font = _Font(bold=True)
+        ws.column_dimensions[ws.cell(1, j).column_letter].width = max(10, len(c) + 2)
+    for fila in ws.iter_rows(min_row=2, min_col=2, max_col=3):
+        for celda in fila:
+            celda.number_format = "0.000000"
+print(f"Entregable final: {XLSX_FINAL.name} ({len(FINAL):,} PDV Tradicional) · "
+      + " · ".join(f"{k} {v:,}" for k, v in FINAL.prioridad.value_counts().items()))
+
+# Excel reducido (usuario, 2026-10-02): las columnas de la ficha del PDV del mapa HTML con el MISMO formato de la hoja "Letras por
+# PDV" (bloques de color, 2 niveles de encabezado y 3.ª fila con la fuente) y, al final, Letras base (INEGI + CP) · Letras (final) ·
+# Acción Golden Stores · Prioridad. Lleva su hoja Diccionario; el diccionario va también en un Excel aparte.
+P_ = "Punto de venta (CP)"
+RED_COLS = [(P_, "pos_id"), (P_, "Nombre"), (P_, "Subcanal"), (P_, "Latitud"), (P_, "Longitud"),
+            (ALT_BLOQUE, "Índice NSE AltScore del clúster (0-100)"), (ALT_BLOQUE, "NSE AltScore en escala 1-6"),
+            (GOB, "Hogares del clúster (buffer de 300 m)"), (GOB, "Nivel NSE INEGI del clúster (media, 1 = D/E … 6 = A/B)"),
+            (GOB, "NSE predominante del clúster"), (GOB, "NSE del punto (hexágono res 10)"), (GOB, "NSE de su AGEB"), (GOB, "% ABC+ del clúster"),
+            (GOB, "Índice Censo por manzana (0-100)"), (GOB, "NSE confirmado por el Censo"),
+            (VEN, "Venta media (cajas/mes)"), (VEN, "CP · potencial (cajas/mes)"), (VEN, "CP · clase de potencial"), (VEN, "Rappi · tiendas a 300 m"),
+            (VEN, "Rappi · pedidos/mes totales del buffer"), (VEN, "Rappi (pedidos/mes medios de sus tiendas)"),
+            (VEN, "Rappi · venta del buffer (MXN/mes, referencia)"), (VEN, "Rango venta (0 = mejor)"), (VEN, "Rango CP"), (VEN, "Rango Rappi"),
+            (VEN, "Score sin Rappi"), (VEN, "Score"),
+            (CLU, "Clúster NSE (H3 res 9)"), (CLU, "PDV del clúster NSE"), (CLU, "Distancia al centro del clúster (m)"),
+            ("Letra 1", "Nivel NSE final (INEGI + AltScore)"), ("Letra 1", "Índice NSE (100 = media del subcanal)"),
+            ("Letra 1", "Letra 1 sin AltScore"), ("Letra 1", "Letra 1 con AltScore (final)"),
+            ("Letra 2", "Letra 2 sin Rappi"), ("Letra 2", "Letra 2 con Rappi (final)"),
+            ("Clasificación", "Letras base (INEGI + CP)"), ("Clasificación", "Letras (final)"), ("Clasificación", "Acción Golden Stores"),
+            ("Clasificación", "Share KO Whisp (hexágono res 6)"), ("Clasificación", "Share alto / bajo (vs área)"),
+            ("Clasificación", "Fuente de la prioridad"), ("Clasificación", "Prioridad")]
+faltan = [c_ for c_ in RED_COLS if c_ not in TABLA.columns]
+assert not faltan, f"columnas que ya no existen en TABLA: {faltan}"
+RED = TABLA[RED_COLS]
+DEFINICION = {
+    "pos_id": f"Identificador del punto de venta en el CP de {C.CLIENTE_NOMBRE}.",
+    "Nombre": "Nombre del punto de venta.",
+    "Subcanal": "Subcanal del PDV en el CP (abarrotes, cervezas vinos y licores, hogar con venta, comerciante en general, farmacias).",
+    "Latitud": "Latitud del PDV (grados decimales, WGS84).",
+    "Longitud": "Longitud del PDV (grados decimales, WGS84).",
+    "Índice NSE AltScore del clúster (0-100)": "Nivel socioeconómico digital de la zona: media de los puntos AltScore a 300 m del centro del clúster (0 = más bajo, 100 = más alto).",
+    "NSE AltScore en escala 1-6": "El índice AltScore pasado a la escala del NSE AMAI (1 = D/E … 6 = A/B) para poder mezclarlo con INEGI.",
+    "Hogares del clúster (buffer de 300 m)": "Hogares 2025 a 300 m del centro del clúster NSE (Censo 2020 por manzana y localidades rurales, actualizados con la Intercensal 2025).",
+    "Nivel NSE INEGI del clúster (media, 1 = D/E … 6 = A/B)": "Nivel socioeconómico medio de los hogares del clúster según INEGI y la Regla AMAI 2024 (1 = D/E … 6 = A/B).",
+    "NSE predominante del clúster": "Grupo con más hogares en el clúster: bajo (D+, D/E) · medio (C, C−) · alto (C+, A/B).",
+    "NSE del punto (hexágono res 10)": "Nivel NSE medio del hexágono H3 res 10 (≈ 0.015 km²) donde está el PDV.",
+    "NSE de su AGEB": "Nivel NSE medio de la AGEB de INEGI que contiene al PDV.",
+    "% ABC+ del clúster": "Porcentaje de hogares A/B y C+ en el clúster.",
+    "Índice Censo por manzana (0-100)": "Medición directa del Censo 2020 en las manzanas del clúster (auto, computadora, internet y escolaridad); valida el NSE AMAI.",
+    "NSE confirmado por el Censo": "Sí si la Letra 1 coincide con la letra que da el índice del Censo; sin dato si las manzanas tienen datos protegidos.",
+    "Venta media (cajas/mes)": f"Venta media de sueros del PDV según el CP de {C.CLIENTE_NOMBRE} (cajas por mes).",
+    "CP · potencial (cajas/mes)": "Potencial futuro de sueros del PDV frente a su comparable, con decimales (cajas por mes).",
+    "CP · clase de potencial": "Clase de potencial del CP: Very High, High, Moderate o Low.",
+    "Rappi · tiendas a 300 m": "Tiendas Rappi físicas (sueros e hidratación) a 300 m del PDV.",
+    "Rappi · pedidos/mes totales del buffer": "Suma de los pedidos por mes de hidratación Coca-Cola (Powerade, Flashlyte, Vitamin Water) de esas tiendas Rappi.",
+    "Rappi (pedidos/mes medios de sus tiendas)": "La variable Rappi de la Letra 2: pedidos/mes totales ÷ número de tiendas Rappi; 0 si no hay.",
+    "Rappi · venta del buffer (MXN/mes, referencia)": "Venta de sueros de esas tiendas Rappi en pesos por mes; solo referencia, no entra al score.",
+    "Rango venta (0 = mejor)": "Posición del PDV por venta media entre los PDV con venta: 0 = el que más vende, 1 = el que menos.",
+    "Rango CP": "Posición del PDV por potencial (CP) entre los PDV con venta: 0 = el de mayor potencial.",
+    "Rango Rappi": "Posición del PDV por su variable Rappi entre los PDV con venta: 0 = el de más pedidos; sin Rappi empata en el rango medio.",
+    "Score sin Rappi": "Score de la Letra 2 solo con venta y CP: (2·rango venta + 2·rango CP) / 4.",
+    "Score": "Score final de la Letra 2: (2·rango venta + 2·rango CP + 1·rango Rappi) / 5. Menor es mejor.",
+    "Clúster NSE (H3 res 9)": "Hexágono H3 res 9 (≈ 0.1 km²) que contiene al PDV; su centro es el punto NSE y todos sus PDV comparten la Letra 1.",
+    "PDV del clúster NSE": "PDV Tradicional que caen en el mismo hexágono (comparten su Letra 1).",
+    "Distancia al centro del clúster (m)": "Distancia del PDV al centro de su hexágono, en metros (siempre dentro del buffer de 300 m).",
+    "Nivel NSE final (INEGI + AltScore)": f"Nivel NSE que decide la Letra 1: {1 - LAM:g} · INEGI + {LAM:g} · AltScore (escala 1-6).",
+    "Índice NSE (100 = media del subcanal)": "Nivel NSE final ÷ media de su subcanal × 100.",
+    "Letra 1 sin AltScore": "Primera letra (demanda) solo con INEGI: H si su índice NSE ≥ 100; si no, L.",
+    "Letra 1 con AltScore (final)": "Primera letra (demanda) final: H si el índice NSE final ≥ 100; si no, L.",
+    "Letra 2 sin Rappi": f"Segunda letra (venta) solo con venta y CP: H si el score sin Rappi < {CORTE}; sin venta = L.",
+    "Letra 2 con Rappi (final)": f"Segunda letra (venta) final: H si el score < {CORTE}; sin venta = L.",
+    "Letras base (INEGI + CP)": "Letra 1 sin AltScore + Letra 2 sin Rappi: las letras solo con datos de INEGI y del CP.",
+    "Letras (final)": "Letra 1 final + Letra 2 final (HH, HL, LH o LL). Primero la demanda, luego la venta.",
+    "Acción Golden Stores": "Acción fija de la metodología Golden Stores: HH Atacar · HL Bloquear · LH Fortalecer · LL Mantener.",
+    "Share KO Whisp (hexágono res 6)": "Participación de Coca-Cola en las cajas unidad de sueros e isotónicos del hexágono H3 res 6 del PDV (Whisp, ago-2025 a ago-2026).",
+    "Share alto / bajo (vs área)": "Alto si el share del hexágono es mayor o igual al share de Coca-Cola de toda el área de estudio; si no, bajo.",
+    "Fuente de la prioridad": "De dónde sale la prioridad: Letra 1 × share Whisp, o por letras cuando no hay share.",
+    "Prioridad": "Con share Whisp: H bajo P1 · H alto P2 · L bajo P3 · L alto P4 (Letra 1 × share). Sin share: HH P1 · HL P2 · LH P3 · LL P4.",
+}
+UNIDAD = {"Venta media (cajas/mes)": "cajas/mes", "CP · potencial (cajas/mes)": "cajas/mes", "Rappi · pedidos/mes totales del buffer": "pedidos/mes",
+          "Rappi (pedidos/mes medios de sus tiendas)": "pedidos/mes", "Rappi · venta del buffer (MXN/mes, referencia)": "MXN/mes",
+          "Hogares del clúster (buffer de 300 m)": "hogares", "Distancia al centro del clúster (m)": "metros", "Latitud": "grados", "Longitud": "grados",
+          "% ABC+ del clúster": "%", "Rappi · tiendas a 300 m": "tiendas", "PDV del clúster NSE": "PDV"}
+DICC = pd.DataFrame([{"#": i_ + 1, "bloque": bq, "columna": cn, "definición": DEFINICION.get(cn, ORIGEN.get((bq, cn), "")),
+                      "de dónde sale / fórmula": ORIGEN.get((bq, cn), ""), "unidad o valores": UNIDAD.get(cn, "—")}
+                     for i_, (bq, cn) in enumerate(RED_COLS)])
+assert DICC["definición"].ne("").all()
+wb_r = X.libro()
+X.hoja_tabla_2niveles(wb_r, "Letras por PDV", RED, titulo="Letras por punto de venta · canal Tradicional (reducido)",
+                      nota="Columnas de la ficha del PDV en el mapa de QA · al final Letras base (INEGI + CP), Letras (final), Acción Golden Stores y Prioridad. "
+                           "La 3.ª fila dice de dónde sale cada columna; la hoja Diccionario define cada una.",
+                      formatos=FMT, anchos={"Nombre": 30}, colores_grupo=COLORES, fijar_cols=2,
+                      fuentes={k: v for k, v in ORIGEN.items() if k in set(RED.columns)})
+X.hoja_tabla(wb_r, "Diccionario", DICC, titulo="Diccionario de datos · Letras por PDV (reducido)",
+             nota="Una fila por columna de la hoja Letras por PDV, en el mismo orden.",
+             anchos={"#": 5, "bloque": 34, "columna": 40, "definición": 80, "de dónde sale / fórmula": 60, "unidad o valores": 14})
+XLSX_RED = C.OUT_CLIENTE / f"06_letras_nse_ventas_tradicional_reducido_{C.CLIENTE}_{C.SLUG}.xlsx"
+wb_r.save(XLSX_RED)
+wb_d = X.libro()
+X.hoja_tabla(wb_d, "Diccionario", DICC, titulo="Diccionario de datos · Letras por PDV · canal Tradicional",
+             nota="Definición, fuente o fórmula y unidad de cada columna del Excel reducido (las mismas columnas de la ficha del mapa de QA).",
+             anchos={"#": 5, "bloque": 34, "columna": 40, "definición": 80, "de dónde sale / fórmula": 60, "unidad o valores": 14})
+XLSX_DICC = C.OUT_CLIENTE / f"06_diccionario_letras_{C.CLIENTE}_{C.SLUG}.xlsx"
+wb_d.save(XLSX_DICC)
+print(f"Excel reducido: {XLSX_RED.name} ({len(RED):,} PDV · {RED.shape[1]} columnas, formato de Letras por PDV + Diccionario) · {XLSX_DICC.name}")
 print(f"Excel: {XLSX.name} ({len(d):,} PDV Tradicional, {int(d.objetivo.sum()):,} objetivo)")
 
 # %% [markdown]
 # ## 6. Presentación de las letras (estilo Kin, carpeta del cliente)
 #
 # Estructura del entregable del usuario (2026-09-30): pos_id · AltScore · INEGI · venta · CP · Rappi · clúster · Letra 1 ·
-# Letra 2 (el share y su priorización se omiten por ahora), solo canal Tradicional. Contado como pitch ejecutivo: resumen
+# Letra 2 y la prioridad por letras (HH P1 · HL P2 · LH P3 · LL P4; el share se omite por ahora), solo canal Tradicional. Contado como pitch ejecutivo: resumen
 # primero; el **clúster NSE** (hexágono + buffer de 300 m) y el **vector de la Letra 2** (venta, CP y Rappi); cómo sale cada letra y
 # qué mueven AltScore y Rappi; el resultado; tiendas reales como ejemplo; el QA y lo que falta validar. Titulares con cifras
 # calculadas y guion en las notas de cada lámina.
@@ -1512,7 +1708,7 @@ alt_05 = int(sa.loc[0.5, "PDV que cambian"]) if 0.5 in sa.index else 0
 prs = K.nueva()
 s = K.portada(prs, ["Letras por", "punto de venta"], f"NSE × Ventas · Canal Tradicional · Sueros e hidratación · {C.ZM_NOMBRE}",
               "Cada PDV toma el NSE de su clúster (hexágono H3 + 300 m, movido por AltScore) y su venta, su potencial y el Rappi de su "
-              "buffer lo califican frente a todos los PDV con venta.", "Bepensa · Septiembre 2026")
+              "buffer lo califican frente a todos los PDV con venta.", f"{C.CLIENTE_NOMBRE} · Septiembre 2026")
 K.notas(s, "Presentación del entregable de letras del canal Tradicional: dos letras por PDV, NSE y venta, con solo datos del CP para el PDV. "
            "La primera lámina trae la conclusión y lo que pedimos validar.")
 
@@ -1526,7 +1722,7 @@ s, y = K.lamina(prs, f"Las {hh_n:,} tiendas HH (NSE alto y score de venta < {COR
                        f"2, 2 y 1; es H si su score está bajo {CORTE}. "
                        f"Las {hh_n:,} HH venden {hh_idx - 100:+.0f}% sobre la media y hacen el {hh_mix:.0f}% de la venta. Pedimos validar tres puntos."))
 for i_, (v_, e_, d_) in enumerate([(f"{len(ob):,}", "PDV Tradicional clasificados", "con venta en el CP y hogares en su clúster"),
-                                   (f"{hh_n:,}", "HH · Atacar", f"{panorama.loc['HH', '% tiendas']:.0f}% de las tiendas"),
+                                   (f"{hh_n:,}", "HH · P1 · Atacar", f"{panorama.loc['HH', '% tiendas']:.0f}% de las tiendas"),
                                    (f"{hh_mix:.0f}%", "de la venta en HH", f"índice de venta {hh_idx:.0f}"),
                                    (f"{int((ob.letras != ob.letras_base).sum()):,}", "PDV cambian de letras", f"AltScore {n_alt} Letras 1 · Rappi {n_rap} Letras 2")]):
     K.cifra(s, K.MARGEN + i_ * 2.3, y + 0.05, 2.15, v_, e_, d_, h=1.1, oscura=(i_ == 0))
@@ -1534,22 +1730,22 @@ K.tarjeta(s, K.MARGEN, y + 1.35, 9.1, 1.4, "Qué pedimos validar hoy",
           f"1. Clúster NSE = hexágono H3 res {RES_CL} + buffer de {R300} m desde su centro (sus PDV comparten la Letra 1).\n"
           f"2. AltScore mueve el NSE con peso {LAM:g}: cambia {n_alt} Letras 1 (con 0.5, {alt_05}).\n"
           f"3. Letra 2 = score de rangos (pesos 2 · 2 · 1, corte {CORTE}): Rappi decide {n_rap} Letras 2; con solo tiendas Rappi activas cambian {act_cambia}.", acento=True)
-K.mensaje(s, "Cada columna del entregable dice de dónde sale: CP de Bepensa, INEGI, AltScore y Rappi.")
+K.mensaje(s, f"Cada columna del entregable dice de dónde sale: CP de {C.CLIENTE_NOMBRE}, INEGI, AltScore y Rappi.")
 
 # 2 · de dónde sale cada columna (la estructura del entregable)
 s, y = K.lamina(prs, "El entregable lee de izquierda a derecha: de dónde sale cada dato y cómo termina en dos letras", "Estructura del entregable",
                 notas=("Es la estructura acordada: pos_id; AltScore; INEGI; venta y CP; Rappi; clúster; Letra 1 y Letra 2, cada una sin y con su "
                        "fuente adicional. Del PDV solo se usa el CP. El Excel agrega el detalle de cada bloque, con una tercera fila que dice de "
                        "dónde sale cada columna y la hoja Fuentes."))
-bloques = [("pos_id", "Punto de venta", "CP Bepensa: id, nombre, subcanal, lat/lon (canal Tradicional)", K.NEGRO),
+bloques = [("pos_id", "Punto de venta", f"CP {C.CLIENTE_NOMBRE}: id, nombre, subcanal, lat/lon (canal Tradicional)", K.NEGRO),
            ("AltScore", "Mueve el NSE", f"Índice NSE ({' y '.join(PROX_ALT) or 'proxies digitales'}) + {len(ALT_SEN)} señales del buffer del clúster", "4A3AA7"),
            ("INEGI", "NSE del clúster", "Hogares 2025 y % por NSE del buffer, NSE del punto y de su AGEB, Censo por manzana", "1F3A5F"),
-           ("Venta + CP", "CP Bepensa", "Venta media y potencial del CP, con decimales (cajas/mes)", "1E5B45"),
-           ("Rappi", "Del buffer", f"Pedidos/mes medios de sueros Coca-Cola de las tiendas Rappi a {R300} m", "1E5B45"),
+           ("Venta + CP", f"CP {C.CLIENTE_NOMBRE}", "Venta media y potencial del CP, con decimales (cajas/mes)", "1E5B45"),
+           ("Rappi", "Del buffer", f"Pedidos/mes medios de hidratación Coca-Cola (Powerade, Flashlyte, Vitamin Water) de las tiendas Rappi a {R300} m", "1E5B45"),
            ("Clúster", "NSE", f"Hexágono res {RES_CL} + {R300} m desde su centro; sus PDV comparten la Letra 1", "333333"),
            ("Letra 1", "sin y con AltScore", "NSE del clúster ≥ media del subcanal", K.NEGRO),
            ("Letra 2", "sin y con Rappi", f"Score de rangos 2 · 2 · 1 < {CORTE}", K.NEGRO),
-           ("Acción", "Golden Stores", "HH Atacar · HL Bloquear · LH Fortalecer · LL Mantener", "333333")]
+           ("Acción", "Golden Stores", "HH Atacar P1 · HL Bloquear P2 · LH Fortalecer P3 · LL Mantener P4", "333333")]
 anchos_b = [0.95, 1.15, 1.2, 1.1, 1.05, 1.1, 0.8, 0.9, 0.85]
 xb = K.MARGEN
 for (tit, sub, cuerpo, col_), w_ in zip(bloques, anchos_b):
@@ -1575,7 +1771,7 @@ if len(fila_ej):
         "Score": f"{f_[(VEN, 'Score')]:.2f}",
         "Clúster NSE": f"{int(f_[(CLU, 'PDV del clúster NSE')])} PDV", "L1 sin / con AltScore": f"{f_[('Letra 1', 'Letra 1 sin AltScore')]} / {f_[('Letra 1', 'Letra 1 con AltScore (final)')]}",
         "L2 sin / con Rappi": f"{f_[('Letra 2', 'Letra 2 sin Rappi')]} / {f_[('Letra 2', 'Letra 2 con Rappi (final)')]}",
-        "Acción": f_[("Clasificación", "Acción Golden Stores")]}]), K.MARGEN, y + 2.1, 9.1, tam=7)
+        "Acción": f"{f_[('Clasificación', 'Acción Golden Stores')]} · {f_[('Clasificación', 'Prioridad')]}"}]), K.MARGEN, y + 2.1, 9.1, tam=7)
 K.mensaje(s, "La 3.ª fila del Excel y la hoja Fuentes dicen de dónde sale cada columna; la hoja Fórmulas, cómo se calcula.")
 
 K.notas(K.separador(prs, "Cómo se calcula", "Clústeres, Letra 1 y Letra 2"), "Primero los clústeres, luego la letra del NSE y la de ventas; cada una con su QA.")
@@ -1681,7 +1877,7 @@ sens_t = sens.assign(**{"Variante": sens.variante, "% H": sens["% L2 = H"].map("
 CLAVE = [f"base: pesos 2·2·1, corte {CORTE}", "pesos 2·2·0", "pesos 1·1·1", "corte 0.35", "corte 0.45",
          f"Rappi solo con tiendas activas (≥ {THETA} pedidos)", "empates en el peor rango (no el medio)"]
 K.tabla(s, sens_t[sens_t.Variante.isin(CLAVE)][["Variante", "% H", "Misma letra", "Suben ↑ · bajan ↓"]], K.MARGEN, y + 1.3, 9.1, tam=7)
-K.mensaje(s, "Rappi es venta observada de la categoría que Bepensa no ve; con rangos no hay que suponer botellas por caja.")
+K.mensaje(s, f"Rappi es venta observada de la categoría que {C.CLIENTE_NOMBRE} no ve; con rangos no hay que suponer botellas por caja.")
 
 # 8 · resultado por letras
 s, y = K.lamina(prs, f"Las HH son {panorama.loc['HH', '% tiendas']:.0f}% de las tiendas y {hh_mix:.0f}% de la venta; las LH suman otro {lh_mix:.0f}%",
@@ -1690,7 +1886,7 @@ s, y = K.lamina(prs, f"Las HH son {panorama.loc['HH', '% tiendas']:.0f}% de las 
                        f"hacen {hh_mix + lh_mix:.0f}% de la venta con {panorama.loc['HH', '% tiendas'] + panorama.loc['LH', '% tiendas']:.0f}% de las tiendas. Frente a las letras base (solo INEGI + CP), {igual:.0%} de los PDV conserva sus letras: AltScore cambia {n_alt} "
                        f"Letras 1 y Rappi {n_rap} Letras 2."))
 p_ = panorama.reset_index()
-tb = pd.DataFrame({"Letras": p_.letras, "Acción": p_["acción"], "Tiendas": p_.tiendas.fillna(0).astype(int).map("{:,}".format),
+tb = pd.DataFrame({"Letras": p_.letras, "Prioridad": p_["prioridad"] if "prioridad" in p_ else "Letra 1 × share", "Acción": p_["acción"], "Tiendas": p_.tiendas.fillna(0).astype(int).map("{:,}".format),
                    "% tiendas": p_["% tiendas"].map("{:.0f}%".format), "% venta": p_["% mix ventas"].map("{:.0f}%".format),
                    "Index ventas": p_["Index ventas"].map("{:.0f}".format), "NSE medio": p_.N_medio.map("{:.2f}".format),
                    "% con Rappi": p_["% con Rappi"].map("{:.0f}%".format)})
@@ -1700,7 +1896,8 @@ K.texto(s, K.MARGEN + 5.8, y + 0.02, 3.3, 0.2, "Letras base (filas) → finales 
 K.tabla(s, cruce.reset_index().rename(columns={"letras base (INEGI + CP)": "Base"}).astype(str), K.MARGEN + 5.8, y + 0.28, 3.3, tam=7.5, resaltar=[0])
 K.texto(s, K.MARGEN, y + 1.8, 9.1, 0.4, f"Letra 1 = NSE de su clúster (H alto · L bajo) · Letra 2 = score de rangos de venta, CP y Rappi (2 · 2 · 1): "
                                          f"H si < {CORTE}; sin venta = L.", tam=8.5, color=K.GRIS)
-K.mensaje(s, "HH = Atacar · HL = Bloquear · LH = Fortalecer · LL = Mantener (acciones fijas de Golden Stores).")
+K.mensaje(s, "Prioridad = Letra 1 × share Coca-Cola (Whisp): H bajo P1 · H alto P2 · L bajo P3 · L alto P4." if USA_WHISP else
+          "Prioridad: primero la demanda, luego la venta · HH P1 Atacar · HL P2 Bloquear · LH P3 Fortalecer · LL P4 Mantener.")
 
 # 9 · ejemplos con tiendas reales (formato del entregable)
 s, y = K.lamina(prs, "Así se ve cada tienda en el entregable: sus datos, sus clústeres y sus dos letras", "Ejemplos reales",
@@ -1718,7 +1915,7 @@ tb = pd.DataFrame([{"pos_id": str(int(r.pos_id_cp)), "Nombre": str(r.Nombre)[:20
                     "NSE INEGI → final": f"{r.N_inegi:.2f} → {r.N:.2f}", "L1 sin → con AltScore": f"{r.L1_sin_alt} → {r.L1}",
                     "Venta media": f"{r.V:.2f}", "CP": f"{r.CP:.2f}", "Rappi": f"{r.rappi_media:.1f}",
                     "Score (sin → con Rappi)": f"{r.score_sin_rappi:.2f} → {r.score:.2f}", "L2 sin → con Rappi": f"{r.L2_sin_rappi} → {r.L2}",
-                    "Acción": r.accion} for r in ejemplos])
+                    "Acción": f"{r.accion} · {r.prioridad}"} for r in ejemplos])
 K.tabla(s, tb, K.MARGEN, y + 0.05, 9.1, tam=7, anchos=[0.6, 1.45, 0.75, 1.0, 0.95, 0.65, 0.4, 0.5, 0.95, 0.95, 0.9])
 K.mensaje(s, f"NSE = media del buffer de su clúster (1 D/E … 6 A/B), movida por AltScore · Score = rangos de venta, CP y Rappi (2 · 2 · 1); H si < {CORTE}.")
 
@@ -1758,6 +1955,6 @@ cols_guardar = ["pos_id_cp", "segmento", "objetivo", "cluster_nse", "n_cluster_n
                 "nse_confirmado", "I_N", "I_N_inegi", "L1", "L1_sin_alt", "frontera_L1", "cambia_por_alt", "sube_por_alt", "baja_por_alt", "variantes_iguales",
                 "V", "CP", "CP_redondeado", "rappi_n", "rappi_activas", "rappi_media", "rappi_suma", "rappi_venta", "rappi_sueros", "rappi_turbo", "P",
                 "r_V", "r_CP", "r_R", "score", "score_sin_rappi", "L2", "L2_sin_rappi", "L2_sin_cp", "L2_cp_redondeado",
-                "frontera_L2", "cambia_por_rappi", "sube_por_rappi", "baja_por_rappi", "letras", "letras_sin_rappi", "letras_base", "accion", "accion_base"]
+                "frontera_L2", "cambia_por_rappi", "sube_por_rappi", "baja_por_rappi", "letras", "letras_sin_rappi", "letras_base", "accion", "accion_base", "prioridad", "fuente_prioridad", "share_ko", "share_ko_revenue", "indice_share", "share_clase"]
 ids[cols_guardar].assign(nse_confirmado=lambda t: t.nse_confirmado.astype(object)).to_parquet(C.PROC / f"letras_pdv_{C.CLIENTE}_{C.SLUG}.parquet", index=False)
 print("Guardado:", f"letras_pdv_{C.CLIENTE}_{C.SLUG}.parquet |", MAPA_QA.name, "|", XLSX.name, "|", DECK.name)

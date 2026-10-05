@@ -32,3 +32,19 @@ Aplicado a los dos decks de Bepensa · ZM Mérida el 2026-10-01 (usuario: "recre
 Colores: solo la paleta Kin (`#141417`, `#222326`, `#999EA6`, `#D4D5D6`, `#EFEFEE`, `#FFFFFF`, `#E5FF01`; `#F2F2F2` y `#444444`
 existen en el DS para tarjetas y texto secundario). **Excepción a propósito:** los colores de dato que deben coincidir con los mapas
 y Excel (HH/HL/LH/LL, semáforos verde/amarillo/rojo, clases CP) se conservan. Nunca "Let knowledge in"; sin signo `$`.
+
+## Deck de un bottler nuevo (a partir de los de Bepensa; hecho así para Arca Guadalajara el 2026-10-05)
+1. Crear los dos artifacts vacíos (tipo Slides) y registrar sus URLs en la tabla del CLAUDE.md.
+2. `read` de los decks de Bepensa (deck.json + todas las láminas): son la plantilla. El usuario los edita a mano: copiar SOLO los ids
+   que están en `order` (en la carpeta del scratchpad pueden quedar láminas viejas que ya no existen en el deck).
+3. Cifras: `scripts/cifras_decks.py <ciudad> <cliente>`. Figuras: recortar los PNG del 06 ejecutado (`notebooks/ejecutados/<ciudad>/
+   06_*.ipynb`: clústeres de ejemplo, histograma del score, mapa Rappi, mapa de letras) y las de `laminas_mapa.py --ciudad --cliente`;
+   subirlas con `upload_asset` al artifact nuevo y cambiar los `/_blob/...`.
+4. Cambiar en cada lámina solo cifras, nombres (cliente, tiendas de ejemplo con nombre comercial, nunca personas) y textos que dependan
+   de la ciudad; reescribir las notas con las cifras nuevas. Si la ciudad tiene Whisp, la prioridad NO sale de las letras: quitar
+   "P1 · Atacar" de las tablas de letras y agregar la lámina de prioridad (Letra 1 × share Whisp) en los DOS decks: Letras
+   (`prioridad`, después de `resultado`) y Golden Stores (`prio-whisp`, después de `p1`, con 8 tiendas reales: una por cada
+   combinación Letra 1 × Letra 2 × share, con nombre comercial). Todo dato opcional que venga se presenta (regla del usuario).
+5. Publicar en UNA llamada: `deck.json` (título "<…> · <BOTTLER> <Ciudad>", `createdOnFiles` nuevo, mismo `designSystems`) + todas las
+   láminas + los archivos del DS copiados del lado del servidor desde un deck existente (`{"artifact": <deck de Bepensa>, "path":
+   "project/ds/kin/..."}`: tokens.json, fuentes y PNG de `templates/kin-presentation/assets/`).

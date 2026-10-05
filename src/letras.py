@@ -35,6 +35,10 @@ import pandas as pd
 NIVELES = {"D/E": 1, "D+": 2, "C-": 3, "C": 4, "C+": 5, "A/B": 6}
 NOMBRE_NIVEL = {v: k for k, v in NIVELES.items()}
 ACCION = {"HH": "Atacar", "HL": "Bloquear", "LH": "Fortalecer", "LL": "Mantener"}
+# prioridad por letras (usuario, 2026-10-02): primero la demanda (Letra 1, NSE) y después la venta (Letra 2)
+PRIORIDAD = {"HH": "P1", "HL": "P2", "LH": "P3", "LL": "P4"}
+# con share de Coca-Cola (Whisp, paso 07; usuario, 2026-10-05): prioridad = Letra 1 × share (la Letra 2 no la cambia)
+PRIORIDAD_SHARE = {("H", "bajo"): "P1", ("H", "alto"): "P2", ("L", "bajo"): "P3", ("L", "alto"): "P4"}
 
 
 def nivel_medio(hh: pd.DataFrame) -> pd.Series:

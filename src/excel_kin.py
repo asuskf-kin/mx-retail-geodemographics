@@ -106,7 +106,7 @@ def hoja_tabla(wb, nombre, df, formatos=None, anchos=None, semaforo_col=None, cl
     ws.row_dimensions[fila0].height = 30
     for j, col in enumerate(cols, 1):
         letra = get_column_letter(j)
-        ancho = (anchos or {}).get(col) or min(max(len(str(col)), *(len(str(x)) for x in d[col].head(200))) + 2, 45)
+        ancho = (anchos or {}).get(col) or min(max([len(str(col))] + [len(str(x)) for x in d[col].head(200)]) + 2, 45)
         ws.column_dimensions[letra].width = ancho
     ws.freeze_panes = ws.cell(fila0 + 1, 2)
     if len(d):

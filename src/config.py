@@ -67,8 +67,16 @@ ENIGH_ESTADOS, RAPPI_CIUDAD = _c["ENIGH_ESTADOS"], _c["RAPPI_CIUDAD"]
 SLUG = f"zm_{CIUDAD}"          # sufijo de archivos intermedios y entregables
 
 RAW = BASE / "data" / "raw"
-CLIENTE = "bepensa"
-CLIENTE_CIUDAD = "merida"          # los datos de Bepensa se analizan para la ZM Mérida (notebooks 00 y 04)
+# ---- Cliente (bottler) por ciudad: sus datos van en data/raw/<ciudad>/<cliente>/ (no se suben a git) ----
+# cp = Customer Potential (OBLIGATORIO; trae la venta media por categoria) · ventas = archivo de ventas (opcional: solo lo valida el 00;
+# sin ventas corre el 00 "solo CP") · enrichedgeodata/ = AltScore (OBLIGATORIO). Sin CP o sin AltScore no se avanza (src/correr.py para).
+CLIENTES = {
+    "merida": dict(cliente="bepensa", nombre="Bepensa", cp="cp/conservative_scenario.csv", ventas=None),   # ventas ya no se usan (usuario, 2026-10-05)
+    "guadalajara": dict(cliente="arca", nombre="Arca", cp="cp/cp_arca_mex_sueros_202609.csv", ventas=None),   # usuario, 2026-10-05
+}
+_cl = CLIENTES.get(CIUDAD, CLIENTES["merida"])     # ciudad sin cliente (QA): se conserva la referencia de Bepensa
+CLIENTE, CLIENTE_NOMBRE = _cl["cliente"], _cl["nombre"]
+CLIENTE_CIUDAD = CIUDAD if CIUDAD in CLIENTES else "merida"
 # todo lo de la ciudad va en data/raw/<ciudad>/<cliente>/ (ciudad sin cliente: data/raw/<ciudad>/)
 RAW_CIUDAD = RAW / CIUDAD / (CLIENTE if CIUDAD == CLIENTE_CIUDAD else "")
 # descargas de organismos oficiales: <institucion>/<fuente>/ con el zip, lo extraido y descarga.json
@@ -168,11 +176,11 @@ for _k, _f in FUENTES.items():
 URLS = {k: v["url"] for k, v in FUENTES.items()}
 ARCHIVOS = {k: v["archivo"] for k, v in FUENTES.items()}
 
-# ---- Datos del cliente (Bepensa): ventas y customer potential por punto de venta (no se suben a git) ----
-CLIENTE_RAW = RAW / CLIENTE_CIUDAD / CLIENTE      # data/raw/merida/bepensa/{ventas,cp}
-# el CP cubre toda la peninsula: los notebooks 00 y 04 filtran a la ZM activa y escriben en PROC / OUT de la ciudad
-CLIENTE_VENTAS = sorted((CLIENTE_RAW / "ventas").glob("part-*.csv"))
-CLIENTE_CP = CLIENTE_RAW / "cp" / "conservative_scenario.csv"
+# ---- Datos del cliente: customer potential (y ventas, si las hay) por punto de venta (no se suben a git) ----
+CLIENTE_RAW = RAW / CLIENTE_CIUDAD / CLIENTE      # data/raw/<ciudad>/<cliente>/{cp,ventas,enrichedgeodata}
+# el CP cubre una region amplia: el 00 filtra a la ZM activa y escribe en PROC / OUT de la ciudad
+CLIENTE_VENTAS = sorted(CLIENTE_RAW.glob(_cl["ventas"])) if _cl.get("ventas") else []
+CLIENTE_CP = CLIENTE_RAW / _cl["cp"]
 # señales AltScore (geohex_geodig.parquet, con location.lat/lng): variable socioeconómica adicional (notebook 00b; se une en el 04 y el 06 por ubicación)
 CLIENTE_ALTSCORE = CLIENTE_RAW / "enrichedgeodata"
 ALTSCORE_RES = 8           # celda H3 a la que se proyecta AltScore (res 8 = escala de sus señales OSM; lo digital es de ~1 km)
@@ -213,8 +221,22 @@ LETRA2_PESOS = {"venta": 2, "cp": 2, "rappi": 1}   # Rappi pesa la mitad: no cas
 # (Flashlyte); Powerade es isotonico y queda fuera. El 06 escribe la trazabilidad de los productos tomados y excluidos.
 CP_CATEGORIA = "CustomCat_sueros"                 # sufijo de columnas del CP (antes "TotalPortafolio")
 RAPPI_FABRICANTE = "COCA-COLA"                    # Product_Maker_Standard de Rappi
-RAPPI_SUBCATEGORIAS_L2 = ["Sueros (hidratantes)"] # subcategoria del proyecto (rappi.clasificar) que entra a la Letra 2
+RAPPI_SUBCATEGORIAS_L2 = ["Sueros (hidratantes)"] # (historico: antes solo sueros Flashlyte; ya no decide, ver RAPPI_MARCAS_L2)
+# Rappi de la Letra 2 (usuario, 2026-10-05, "en todos los casos"): pedidos de Coca-Cola de estas marcas de hidratacion, sin importar
+# la subcategoria (Powerade = isotonico, Flashlyte = suero, Vitamin Water = agua funcional, que antes se excluia)
+RAPPI_MARCAS_L2 = ["Powerade", "Flashlyte", "Glacéau Vitamin Water", "Vitamin Water"]
+# marcas anonimizadas de competidores (BRAND_####): NO se toman en Rappi (usuario, 2026-10-05); se quitan al leer el archivo (00c)
+RAPPI_EXCLUIR_MARCA = r"^BRAND_\d+$"
 LETRA2_CORTE = 0.4
+
+# ---- Whisp (paso 07, opcional): share de Coca-Cola por hexagono H3 res 6 (usuario, 2026-10-05) ----
+# Si Whisp tiene datos para el area de estudio, la prioridad sale de Letra 1 x share (H+bajo P1 · H+alto P2 · L+bajo P3 · L+alto P4);
+# si no (p. ej. Merida), la prioridad sale de las letras (HH P1 · HL P2 · LH P3 · LL P4). Share = cajas unidad KO / total del hexagono
+# (sueros + isotonicos, como en el codigo del usuario); "alto" si el share del hexagono >= share de toda el area (indice 100).
+WHISP_CSV = RAW / "whisp" / "Whisp.csv"
+WHISP_VENTANA = (202508, 202608)               # Year-Month inclusive
+WHISP_KO = "COCA-COLA COMPANY"                 # Fabricante = KO; el resto = noko
+WHISP_RES = 6                                  # resolucion H3 del archivo (columna "Hexágono (Res. 6)")
 FRONTERA = 10              # |indice - 100| <= FRONTERA: la letra cambia con poco ruido (se marca, igual que en el 05)
 # Letra 2: venta (PotentialQuantitative_TotalPortafolio) y potencial (PotentialQuantitativeFinal_TotalPortafolio) salen del CP;
 # el potencial va con decimales (usuario, 2026-09-30). El redondeo anterior queda solo como comparacion en el QA:

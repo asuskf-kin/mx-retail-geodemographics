@@ -1,11 +1,19 @@
 # Datos del cliente: qué pedir y cómo validarlos (notebook 00)
 
-## Qué pedir (si falta, no se avanza)
+## Qué pedir (si falta el CP, no se avanza)
+
+Desde 2026-10-01 el 05 y el 06 usan **solo el CP** (su venta media por categoría es la variable de venta); el archivo de
+ventas **ya no se usa para nada** (usuario, 2026-10-05): todas las ciudades tienen `ventas=None` y corren
+`00_cp_validacion`: huella del CP y AltScore, coordenadas, filtro a la ZM, canal y `pdv_<cliente>_<zm>.parquet` con las mismas columnas.
+**CP y AltScore son obligatorios**: sin uno de los dos `src/correr.py` no corre la ciudad.
 
 | Archivo | Campos mínimos | Nota |
 |---|---|---|
-| Ventas por PDV | id de PDV · categoría · cantidad vendida en el periodo · meses con venta · primera y última fecha de venta | Bepensa: `pos_id, custom_category, total_boxes_sold, n_active_months, min_sale_date, max_sale_date, avg_monthly_boxes` |
+| (Histórico, ya no se pide) Ventas por PDV | id de PDV · categoría · cantidad vendida en el periodo · meses con venta · primera y última fecha de venta | Bepensa: `pos_id, custom_category, total_boxes_sold, n_active_months, min_sale_date, max_sale_date, avg_monthly_boxes` |
 | Customer Potential | id de PDV · nombre · **latitud, longitud** · ciudad/municipio · subcanal · tamaño · potencial cuantitativo, final y cualitativo · id comparativo | Bepensa: `conservative_scenario.csv` |
+| AltScore (OBLIGATORIO) | `enrichedgeodata/geohex_geodig.parquet`: `location.lat` + `location.lng`/`location.lon`, señales por punto | Une solo por ubicación (buffer de 300 m); su `pos_id` no cruza con el CP |
+| Rappi (compartido) | `data/raw/rappi/rappi.csv` nacional | Se quitan las marcas `BRAND_x`; Letra 2 = hidratación Coca-Cola |
+| Whisp (opcional) | `data/raw/whisp/Whisp.csv`: hexágono H3 res 6, fabricante, categoría, segmento, cajas unidad | Si no cubre el área, la prioridad queda por letras |
 | Ideal (pedir aunque sea opcional) | tabla de equivalencias entre el id de ventas y el id del CP; coordenadas de las cuentas clave | Sin eso, parte de la venta queda fuera del mapa |
 
 ## Validaciones del 00 (método retail-math-eda)

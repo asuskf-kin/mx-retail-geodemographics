@@ -108,19 +108,21 @@ if loc["lat"] and loc["lon"]:                                   # universo: solo
     d["municipio"] = en_mun[~en_mun.index.duplicated()].NOMGEO.reindex(d.index).to_numpy()
     UNIVERSO = d.municipio.value_counts()
     print(f"En la {C.ZM_NOMBRE}: {d.municipio.notna().sum():,} filas ({d.municipio.notna().mean():.1%}): "
-          + ", ".join(f"{k} {v:,}" for k, v in UNIVERSO.items()) + f" · fuera (resto de la península): {d.municipio.isna().sum():,}")
+          + ", ".join(f"{k} {v:,}" for k, v in UNIVERSO.items()) + f" · fuera de la ZM (resto de la exportación): {d.municipio.isna().sum():,}")
     dig_pen = [c for c in A.senales(d) if A.familia(c) == "digital"]      # referencia: la escala anterior en toda la península
     b_pen = d[dig_pen].dropna(subset=A.PROXIES_NSE).drop_duplicates()
     ALFA_PENINSULA = A.alfa_cronbach(np.column_stack([A.rango_normal(b_pen[c]) for c in A.PROXIES_NSE]))
     print(f"Referencia: los 4 proxies de la exportación anterior (iOS, macOS, viajes, idiomas no españoles) dan α = {ALFA_PENINSULA:.2f} "
-          f"en la península ({len(b_pen):,} vectores digitales)")
+          f"en toda la exportación ({len(b_pen):,} vectores digitales)")
     d = d[d.municipio.notna()].reset_index(drop=True)
 else:
     ALFA_PENINSULA = np.nan
 S = d[A.senales(d)]
 FAM = pd.Series({c: A.familia(c) for c in S.columns})
 print(f"Filas: {len(d):,} · señales: {S.shape[1]} ({FAM.value_counts().to_dict()})")
-print(f"pos_id único: {d.pos_id.is_unique} · formato: UUID v{d.pos_id.str[14].mode()[0]} (aleatorio: no se deriva de otro id)")
+_ids = d.pos_id.astype(str)
+_fmt = f"UUID v{_ids.str[14].mode()[0]} (aleatorio: no se deriva de otro id)" if _ids.str.len().eq(36).all() else f"numérico/texto ({_ids.str.len().median():.0f} caracteres)"
+print(f"pos_id único: {d.pos_id.is_unique} · formato: {_fmt} · no se cruza con el CP (la unión es solo por ubicación)")
 print("Ubicación en la exportación:", {k: v for k, v in loc.items() if v} or "NINGUNA (sin lat/lon ni hexIdx)")
 
 u = S.drop_duplicates().reset_index(drop=True)                 # contextos únicos
@@ -154,7 +156,7 @@ fig, ax = plt.subplots(1, 2, figsize=(11, 3.2))
 ax[0].barh(grano.index, grano["vectores distintos"], color=AZUL)
 ax[0].set_title("Vectores distintos por familia de señales")
 ax[0].set_xscale("log")
-ax[1].hist(S.value_counts().to_numpy(), bins=np.logspace(0, 3.5, 40), color=AZUL)
+ax[1].hist(pd.util.hash_pandas_object(S, index=False).value_counts().to_numpy(), bins=np.logspace(0, 3.5, 40), color=AZUL)   # hash por fila: con muchas filas y señales value_counts desborda
 ax[1].set_xscale("log")
 ax[1].set_title("PDV que comparten el mismo contexto")
 ax[1].set_xlabel("filas por contexto (log)")
@@ -546,7 +548,7 @@ NOMBRES_PROXIES = ", ".join(A.corto(c) for c in PROXIES)
 analisis_items = pd.DataFrame({f"correlación ítem-resto ({len(CAND)} a priori)": r_7, f"correlación ítem-resto ({len(PROXIES)} finales)": r_4})
 analisis_items["se queda"] = analisis_items.index.isin(PROXIES)
 print(f"α de Cronbach en la ZM: {len(CAND)} proxies a priori = {alfa_7:.2f} · {len(PROXIES)} finales ({NOMBRES_PROXIES}) = {alfa_4:.2f} "
-      f"(≥ 0.7 aceptable; con 2 ítems el α tiene techo bajo) · los 4 de la exportación anterior daban {ALFA_PENINSULA:.2f} en la península")
+      f"(≥ 0.7 aceptable; con 2 ítems el α tiene techo bajo) · los 4 de la exportación anterior daban {ALFA_PENINSULA:.2f} en toda la exportación")
 display(traza_items.round(2))
 display(analisis_items.rename(index=A.corto).round(2))
 
@@ -869,7 +871,7 @@ else:
           "Al copiarla a enrichedgeodata/, el 04 la usa sin cambiar código.")
 
 hallazgos00b = pd.DataFrame([
-    ("Universo", f"La exportación trae {N_TOTAL:,} filas de la península; {len(d):,} caen en la {C.ZM_NOMBRE} por ubicación ("
+    ("Universo", f"La exportación trae {N_TOTAL:,} filas (toda la región exportada); {len(d):,} caen en la {C.ZM_NOMBRE} por ubicación ("
                  + ", ".join(f"{k} {v:,}" for k, v in UNIVERSO.items()) + ").",
      "Solo la ZM entra al EDA y al flujo (misma regla que Rappi)."),
     ("Grano", f"{len(d):,} filas con pos_id único, pero solo {len(u):,} contextos distintos ({1 - len(u) / len(d):.0%} de filas repetidas); "
@@ -891,7 +893,7 @@ hallazgos00b = pd.DataFrame([
     ("Estructura", f"KMO: " + ", ".join(f"{r.bloque} {r.KMO:.2f}" for r in kmo.itertuples()) + f"; Bartlett p < 0.001; análisis paralelo retiene {K} dimensiones.",
      "Las señales no se resumen en un factor: se elige una representante por dimensión."),
     ("Índice NSE AltScore", f"{len(PROXIES)} proxies en la ZM ({NOMBRES_PROXIES}), α = {alfa_4:.2f} (los {len(CAND)} a priori daban {alfa_7:.2f}; los 4 de la "
-                            f"exportación anterior, {ALFA_PENINSULA:.2f} en la península); PC1 explica {var_pc1:.0%}; cobertura {idx.notna().mean():.0%} de las filas.",
+                            f"exportación anterior, {ALFA_PENINSULA:.2f} en toda la exportación); PC1 explica {var_pc1:.0%}; cobertura {idx.notna().mean():.0%} de las filas.",
      "Variable socioeconómica adicional al NSE AMAI; no ajustada a la venta."),
     ("Validez convergente", "; ".join(f"{A.corto(x)}: ρ = {r:+.2f} IC zona {ic} (parcial {rp:+.2f})" for x, r, ic, rp in
                                       zip(validez.x, validez.spearman, validez["IC95 bootstrap por zona"], validez["spearman parcial (densidad)"]) if abs(r) >= 0.05),
@@ -904,7 +906,7 @@ hallazgos00b = pd.DataFrame([
                                          f"Jaccard mediano vs base {grid['jaccard vs base'].median():.2f}. Dependen del umbral: "
                                          + (", ".join(A.corto(c) for c in fragiles_base.index) or "ninguna") + ".",
      "Las estables (≥ 80%) son decisión firme; las demás son intercambiables con su sustituta de la misma dimensión."),
-    ("QA: riesgo de validez (turismo)", f"En la península viajes e idiomas no españoles se mueven con iOS y macOS (α {ALFA_PENINSULA:.2f}) porque marcan "
+    ("QA: riesgo de validez (turismo)", f"En toda la exportación viajes e idiomas no españoles se mueven con iOS y macOS (α {ALFA_PENINSULA:.2f}) porque marcan "
                                         "ciudades turísticas; dentro de la ZM no forman escala y el análisis de ítems los deja fuera"
                                         + (f"; los {int(mcar.loc[mcar.bloque == 'vías res 8', 'contextos sin bloque'].iloc[0]):,} contextos sin vías res 8 "
                                            f"tienen índice mediano {mcar.loc[mcar.bloque == 'vías res 8', 'mediana índice sin'].iloc[0]:.0f}."
@@ -956,7 +958,7 @@ X.hoja_tabla(wb, "QA umbrales", grid.drop(columns="señales").round(3), titulo="
              anchos={"base": 24})
 X.hoja_tabla(wb, "Datos del cliente", FUENTES_ALTSCORE, titulo="Archivos AltScore usados", anchos={"archivo": 60, "ruta": 90, "sha256": 66})
 X.portada(wb, "EDA y selección de señales AltScore", f"{C.CLIENTE.title()} · {C.ZM_NOMBRE} · enrichedgeodata",
-          [("Universo", f"{N_TOTAL:,} filas en la exportación (península); {len(d):,} en la {C.ZM_NOMBRE} por ubicación; "
+          [("Universo", f"{N_TOTAL:,} filas en la exportación (toda la región); {len(d):,} en la {C.ZM_NOMBRE} por ubicación; "
                         f"{len(u):,} contextos únicos, {S.shape[1]} señales."),
            ("Ubicación", "Con ubicación: se une en el notebook 04." if tiene_loc else "Sin lat/lon ni hexIdx: no se une a PDV; pedir la exportación con ubicación."),
            ("Método", "retail-math-eda: integridad, faltantes (MCAR), colas, Spearman con n efectivo + BH, Kendall, permutación, Meng, "

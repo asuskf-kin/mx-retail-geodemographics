@@ -172,6 +172,11 @@ h = h.assign(
     banos1=((h.REGADERA == "7") & (h.SERSAN == "1")).astype(int),
     auto1=(h.AUTOPROP == "7").astype(int),
 )
+_req = [c for c in ["pts_edu", "dorm", "cuartos", "internet", "ocup_model", "integ", "pc", "lavadora", "micro", "banos1", "auto1"] if c in h]
+_falt = h[_req].isna().any(axis=1)
+if _falt.any():                                       # p. ej. Tlaxcala: viviendas de la muestra sin cuartos o dormitorios
+    print(f"Hogares de la muestra sin dato para el NSE: {int(_falt.sum()):,} ({_falt.mean():.2%}); se excluyen")
+    h = h[~_falt].copy()
 P_NSE = nse.distribucion_nse(h, modelos)
 
 # ---- matriz de categorias de salida (hogares x categorias, valores 0-1) ----
@@ -251,15 +256,26 @@ X = np.column_stack([
 assert X.shape[1] == T.shape[1]
 
 mun_ag, mun_don = ag.MUN.to_numpy(dtype=object), don.MUN.to_numpy(dtype=object)
-W0 = don.FACTOR.to_numpy(float)[None, :] * np.where(mun_ag[:, None] == mun_don[None, :], 2.0, 1.0)
-W, errores = ipu(X, T.values.astype(float), W0)
-HH = W @ cat_don
+# por lotes de AGEB: cada AGEB se calibra por separado (mismo resultado), y la matriz AGEB × donantes no cabe en memoria en
+# estados grandes (Oaxaca: 2,501 AGEB × 523,099 donantes = 9.75 GB). En una ZM como Mérida cabe todo en un solo lote.
+f_don = don.FACTOR.to_numpy(float)
+LOTE = max(1, int(2e9 // (32 * len(don))))
+HH_l, err_l, WX_tot = [], [], np.zeros(X.shape[1])
+for i0 in range(0, len(ag), LOTE):
+    sl = slice(i0, i0 + LOTE)
+    W0 = f_don[None, :] * np.where(mun_ag[sl, None] == mun_don[None, :], 2.0, 1.0)
+    W, e_ = ipu(X, T.values[sl].astype(float), W0)
+    HH_l.append(W @ cat_don)
+    err_l.append(e_)
+    WX_tot += (W @ X).sum(axis=0)
+    del W, W0
+HH, errores = np.vstack(HH_l), np.concatenate(err_l)
 
 # error relativo maximo por AGEB (sobre la restriccion peor ajustada, escala min. 5% de hogares)
 print(f"Donantes: {len(don):,} | error máx. de calibración por AGEB — mediana {np.median(errores):.3f}, "
       f"p90 {np.quantile(errores, .9):.3f}")
 # ajuste agregado por restriccion (qué tan bien se reproduce el Censo AGEB en conjunto)
-ajuste = pd.DataFrame({"Censo AGEB": np.nansum(T.values, axis=0), "Microsim": (W @ X).sum(axis=0)}, index=T.columns)
+ajuste = pd.DataFrame({"Censo AGEB": np.nansum(T.values, axis=0), "Microsim": WX_tot}, index=T.columns)
 ajuste["dif %"] = ((ajuste.Microsim / ajuste["Censo AGEB"] - 1) * 100).round(2)
 ajuste.round(0)
 

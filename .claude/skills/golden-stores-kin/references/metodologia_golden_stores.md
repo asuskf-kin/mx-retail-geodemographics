@@ -7,8 +7,8 @@ Implementación: `notebooks/_src/05_presentacion_pdv.py`. Lo único que cambia s
 
 | Golden Stores (NIQ) | Implementación Kin |
 |---|---|
-| **Ventas de la tienda**: valor / volumen del periodo (Scantrack) | Cajas por mes de vida del PDV (`cajas_mes_vida`, notebook 00). No `avg_monthly_boxes`: sobreestima a inactivos |
-| **Demanda potencial** con base en el área transaccional (tiempo de manejo, sociodemográficos, compras del hogar, competidores, m²) | Hogares a ≤ 300 m del PDV (hexágonos H3 res 10, notebook 04) con su perfil (tamaño, niños, edad del jefe, NSE AMAI 2024) y competidores DENUE |
+| **Demanda potencial** (1.ª letra) con base en el área transaccional (tiempo de manejo, sociodemográficos, compras del hogar, competidores, m²) | Hogares a ≤ 300 m del PDV (hexágonos H3 res 10, notebook 04) con su perfil (tamaño, niños, edad del jefe, NSE AMAI 2024) y competidores DENUE |
+| **Ventas de la tienda** (2.ª letra): valor / volumen del periodo (Scantrack) | **Venta media de la categoría según el CP** (`PotentialQuantitative_<cat>`, cajas/mes; desde 2026-10-01 solo CP). Antes: `cajas_mes_vida` del archivo de ventas (versión en `cliente/anteriores/`) |
 
 ## Clústeres (índice 100 = promedio del mercado)
 
@@ -47,6 +47,8 @@ Individualizados por clúster, con desviación estándar dentro del clúster (z 
   baja, "#3" demanda alta / venta menor.
 - **P1**: capitalizar con los clústeres de alta venta **HH y LH** en semáforo **verde y amarillo** (tabla clúster × semáforo).
 - P2 de NIQ (clústeres de alta venta de la competencia) requiere ventas de competidores: solo si el cliente las da.
+- **Prioridad por letras** (además, usuario 2026-10-02): HH P1 · HL P2 · LH P3 · LL P4 — primero la demanda, luego la venta.
+  Va en el Excel del 05 ("Prioridad (letras)") y en todo el 06.
 
 ## Customer Potential (CP)
 
@@ -73,10 +75,9 @@ La metodología no cambia; estos controles evitan conclusiones falsas al contarl
 | Control | Por qué | Dónde |
 |---|---|---|
 | Brecha HL vs HH con venta al azar | El clúster se define cortando por venta: la brecha sale ~igual con venta aleatoria (79% vs 81% en Mérida). No es oportunidad. | 05 · 2b |
-| Actividad por clúster | En Mérida 56% de las HL dejó de comprar o está en riesgo: primero reactivar, después Bloquear. | 05 · 2b, lámina "Por qué ahora" |
 | Demanda vs venta (Spearman) | Hogares a 300 m no predicen la venta (ρ ≈ −0.1): la demanda clasifica el área, no pronostica. | 05 · 2b, riesgos |
 | Semáforo en log en ambos ejes | La demanda tiene cola derecha como la venta; misma escala para los z. | 05 · golden_stores |
-| Frontera ±10 y alta reciente | ~23% de las tiendas cambia de clúster con poco ruido; tiendas de ≤ 3 meses son ruidosas. | Excel · Tiendas |
+| Frontera ±10 | ~24% de las tiendas cambia de clúster con poco ruido. (Actividad y alta reciente se quitaron el 2026-10-01: el CP no trae fechas.) | Excel · Tiendas |
 | Excluidas sin hogares | No desaparecen: hoja aparte (zonas comerciales). | Excel · Sin hogares 300 m |
 | Piloto por zonas + MDE | Las áreas de 300 m se traslapan (contaminación) y 139 tiendas no detectan +10%. Sorteo de zonas H3 r7 emparejadas; MDE con efecto de diseño; se elige el universo con menor MDE. Pedir venta mensual (línea base). | 05 · 2c, Excel · Piloto |
 | Clase CP y tamaño | La clase es potencial absoluto (venta × brecha): Very High no existe en la mitad inferior de venta. Leer con la brecha relativa. | 00 · 5.1b |
