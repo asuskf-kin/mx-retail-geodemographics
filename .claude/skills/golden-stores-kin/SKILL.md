@@ -38,6 +38,13 @@ interrumpida deja paquetes rotos, p. ej. pyproj sin su DLL: `instalar.py --solo-
    `references/claude_design_marca.md` ("Deck de un bottler nuevo") y `scripts/cifras_decks.py`, con las láminas de los datos
    opcionales que vinieron (Whisp: `prioridad` y `prio-whisp`). Registrar las URLs en la tabla del CLAUDE.md y en la memoria.
 6. Actualizar CLAUDE.md (cifras de referencia de la ciudad) y, si cambió el flujo, el flujograma (archify).
+7. **QA contra Nielsen (si hay línea base):** carpeta `qa/<Carpeta>/` con el Golden Stores de Nielsen y la copia del Excel de letras
+   del 06; agregar la ciudad a `QA_CIUDADES` en `qa/_src/qa_linea_base_nielsen.py` y `qa2_primera_letra.py` (carpeta, archivo,
+   canal, filtro de la ZM y región) y a `CARPETA` en `qa/correr_qa.py`, y correr `uv run python qa/correr_qa.py <ciudad>` (QA 1 →
+   QA 2 → base vs final; Guadalajara ≈ 15 min). Sale todo: tarjeta, Whisp (sección G: ¿mueve a favor? Letra 2, clúster y
+   prioridad; **Whisp no toca la Letra 1, que es NSE**), % de acierto por municipio y por estado, y el Excel "QA en %".
+   Revisar primero si la 1.ª letra de esa línea base sigue su propio NSE (hoja "Qué decide la 1.ª letra"): en autoservicios sí
+   (Mérida AUC 0.99); en farmacias no (Guadalajara 0.49 nacional, 0.22 en la ZM): ahí el acierto de nuestra Letra 1 tiene techo bajo.
 
 ## Paso 0 — Datos del cliente (OBLIGATORIO, sin esto no se avanza)
 

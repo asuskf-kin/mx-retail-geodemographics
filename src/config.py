@@ -35,7 +35,7 @@ CIUDADES = {
 # ---- QA 2 (qa/): los 15 estados de la Region Sur de Nielsen como "ciudades" de estado completo (todos sus municipios) ----
 # Solo para estimar la 1.a letra de las 1,420 tiendas de la linea base (no son analisis de cliente; usuario, 2026-10-01).
 # Nombres de archivo de INEGI verificados con HEAD el 2026-10-01 (muestra: Chiapas = chs, Tlaxcala = tla; Marco: Veracruz largo).
-# Los municipios se leen de qa/estados/municipios_<ENT>.json, que escribe qa/preparar_estados.py desde el ITER del estado.
+# Los municipios se leen de qa/Bepensa/estados/municipios_<ENT>.json, que escribe qa/preparar_estados.py desde el ITER del estado.
 _QA_SUR = {  # ENT: (nombre, abreviatura de la muestra censal, slug del Marco Geoestadistico, estados ENIGH)
     "04": ("Campeche", "cam", "campeche", ["04", "23", "27", "31"]),
     "07": ("Chiapas", "chs", "chiapas", ["07", "12", "20"]),
@@ -54,7 +54,7 @@ _QA_SUR = {  # ENT: (nombre, abreviatura de la muestra censal, slug del Marco Ge
     "31": ("Yucatán", "yuc", "yucatan", ["04", "23", "27", "31"]),
 }
 for _e, (_nom, _ab, _mg, _enigh) in _QA_SUR.items():
-    _j = BASE / "qa" / "estados" / f"municipios_{_e}.json"
+    _j = BASE / "qa" / "Bepensa" / "estados" / f"municipios_{_e}.json"
     CIUDADES[f"qasur_{_e}"] = dict(
         ENT=_e, NOM_ENT=_nom, ABREV_MICRO=_ab, MG_SLUG=_mg, REGION_NIELSEN="Región Sur (QA)",
         ZM_NOMBRE=f"Estado de {_nom} (QA)",

@@ -61,6 +61,10 @@ Para replicarlo en otra ciudad usa la skill `/nse-tiendas-mx` (en `.claude/skill
    la ZM del Valle de México es de 3 estados y `config.CIUDADES` es de uno solo → preguntar el alcance. **Al terminar la corrida se
    crean los dos artifacts** "Golden Stores · Tradicional · <BOTTLER> <Ciudad>" y "Letras por PDV · <BOTTLER> <Ciudad>" y se registran
    abajo. Pasos completos: sección "Bottler o ciudad nuevos" de la skill golden-stores-kin.
+8. **QA contra Nielsen = todos los QA** (usuario, 2026-10-05: "no olvides sacar todo los qa"): una carpeta por ciudad en `qa/`
+   (`Bepensa` = Mérida, `Guadalajara` = Arca) y `uv run python qa/correr_qa.py <ciudad>` (QA 1, QA 2 y base vs final). Incluye
+   **Whisp** ("mira si mueve a favor": sin vs con Whisp en Letra 2, clúster y prioridad; **la 1.ª letra es NSE y Whisp no la mueve**)
+   y el **% de acierto por municipio** (hoja "Por municipio" en el QA 1 y en "QA en %").
 
 **Pendientes de decisión del usuario** (no cambiar sin preguntar):
 - Letra 2: el PDV sin Rappi a 300 m (91% en Mérida) empata en el rango medio (0.55) y por eso Rappi baja 198 letras y sube 65;
@@ -113,8 +117,11 @@ outputs/merida/bepensa/cliente/  SOLO lo que se entrega al cliente: 05 (deck + E
                                  mapa y el diccionario + figuras/ para Claude Design, de laminas_mapa.py); versiones viejas en anteriores/
 docs/flujo_pipeline.*            flujograma del pipeline 00 → 07 (skill archify: .dataflow.json → .html con validate, deliver y
                                  visual-check); el anterior (solo 01-03) en docs/anteriores/. Se actualiza cuando cambia el flujo
-qa/                  QA contra la línea base de Nielsen: `qa/_src/qa_linea_base_nielsen.py` (fuente) → `qa/qa_linea_base_nielsen.ipynb`;
-                     línea base `qa/Golden Stores Sueros R.Sur - KO FY'23.xlsx` (fuera de git, *.xlsx); salida en `qa/salidas/`
+qa/                  QA contra la línea base de Nielsen, **una carpeta por ciudad** (usuario, 2026-10-05): `qa/Bepensa/` = Mérida
+                     (`Golden Stores Sueros R.Sur - KO FY'23.xlsx`, autoservicios; `estados/` del QA 2) y `qa/Guadalajara/` = Arca
+                     (`Golden Stores Sueros Pharma Nacional - KO FY'23.xlsx`, farmacias) + la copia del Excel de letras del 06 de cada una.
+                     Fuentes `qa/_src/qa_linea_base_nielsen.py` (QA 1) y `qa2_primera_letra.py` (QA 2) + `qa/qa.ipynb` (base vs final);
+                     `uv run python qa/correr_qa.py <ciudad>` corre los tres y deja ejecutados y salidas en `qa/<carpeta>/ejecutados|salidas/`
 pyproject.toml · uv.lock · .python-version   proyecto uv (Python 3.14, entorno en .venv; requirements.txt queda para pip)
 ```
 
@@ -244,7 +251,24 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
   número de hogares (AUC 0.51). Nuestro NSE del clúster en su coordenada: AUC 0.99; letra igual en 88% (κ 0.74) con corte relativo y
   80% (κ 0.43) con el corte de nuestros PDV Tradicional.
 - Geografía (nuestros PDV a ≤ 500 m): Letra 1 75% (κ 0.36), Letra 2 77% (κ 0.25, esperado bajo: otro canal). Rappi de la misma
-  cadena a ≤ 200 m anticipa su 2.ª letra: AUC 0.88 [0.63, 1.00] en 39 tiendas.
+  cadena a ≤ 200 m anticipa su 2.ª letra: AUC 0.88 [0.63, 1.00] en 39 tiendas; con la regla vigente (hidratación Coca-Cola, sin
+  BRAND_x; corrida del 2026-10-05) AUC 0.97 [0.91, 1.00] en 37. QA en %: alrededor L1 78 · L2 75 · las dos 57; punto como hoy 83,
+  relativo 91; Región Sur (1,365 de 1,420) como hoy 81, relativo 87.
+
+### QA contra Nielsen · Guadalajara (qa/Guadalajara/, 2026-10-05; Golden Stores Sueros FY'23, **Farmacias de cadena, nacional**)
+- 5,676 farmacias (sin Farmacias Guadalajara/FARGUA, que van aparte en la hoja "Priorización FARGUA"); en la ZM = área Nielsen
+  "Area III OESTE CENTRO Guadalajara": 178 (HL 68 · HH 58 · LL 32 · LH 20; 4 dicen NON-METRO pero están en Zapopan/Tlajomulco).
+- **Su 1.ª letra NO es de NSE:** su propio NSE la separa con AUC 0.49 nacional y **0.22 en la ZM (al revés: H en zonas de NSE más
+  bajo)**; lo que más separa es edad del jefe 35-44 (0.65). Nielsen prioriza farmacias por hogares target de HomeScan (NSE alto con
+  amas de casa < 45 sin niños | NSE bajo > 45 sin hijos). Nuestro NSE del clúster: AUC 0.17 (invertido coincidiría en 67%).
+- Perfil NSE en la coordenada: ρ(N) 0.78 a 300 m (0.84 a 1.5 km), error 3.7 pp. Hogares no comparables (ρ ≤ 0.03).
+- QA en %: alrededor L1 67 · L2 53 · las dos 37 (azar 30); punto como hoy 65 (marca H 92% vs 71% Nielsen), relativo 33. Rappi
+  Benavides ↔ Benavides (84 tiendas): AUC 0.51, no concluyente. Base vs final 84% iguales.
+- **Whisp (sección G, usuario 2026-10-05: "mira si mueve a favor"; no toca la Letra 1, que es NSE):** Letra 2 con la demanda de
+  sueros de Whisp 53% → 50% y clúster 37% → 34% (no concluyente); prioridad Letra 1 × share vs orden de Nielsen ρ +0.07 → −0.12
+  (en contra, IC −0.40 a −0.00), aunque sube el AUC de Nielsen HH 0.49 → 0.58 (IC +0.00 a +0.19). Diagnóstico: la demanda de sueros
+  de Whisp por hexágono separa la 1.ª letra de Nielsen (AUC 0.73), no la 2.ª (0.49). Hojas "Por municipio" en QA 1 y QA en %:
+  Guadalajara 77 tiendas (L1 como hoy 78%), Zapopan 70 (61%), Tlajomulco 14 (7%).
 
 ### Guadalajara (10 municipios Metrópolis 2020, región Pacífico, ENIGH 01·06·14·16·18)
 - **Cliente Arca (desde 2026-10-05; CP `cp_arca_mex_sueros_202609.csv` + AltScore, sin archivo de ventas → `00_cp_validacion`).**

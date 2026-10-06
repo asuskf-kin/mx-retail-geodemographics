@@ -1,7 +1,7 @@
 """Prepara los 15 estados de la Region Sur para el QA 2 (estimar la 1.a letra de las 1,420 tiendas de Nielsen).
 
 Por estado: (1) copia de la carpeta de Merida las fuentes NACIONALES (ENIGH 2024 y Encuesta Intercensal 2025, con su
-descarga.json) para no bajarlas 15 veces; (2) descarga el ITER del estado y escribe qa/estados/municipios_<ENT>.json con
+descarga.json) para no bajarlas 15 veces; (2) descarga el ITER del estado y escribe qa/Bepensa/estados/municipios_<ENT>.json con
 todos sus municipios (el notebook 01 los trata como la "ZM" del estado). Despues se corre el 01 por estado:
 
     uv run python qa/preparar_estados.py
@@ -33,7 +33,7 @@ try:
 except UnicodeDecodeError:
     it = pd.read_csv(f, dtype=str, usecols=["MUN", "NOM_MUN", "LOC"], encoding="latin-1")
 it = it[(it.MUN != "000") & (it.LOC == "0000")].drop_duplicates("MUN").sort_values("MUN")
-out = Path(sys.argv[1]) / "qa" / "estados" / f"municipios_{C.ENT}.json"
+out = Path(sys.argv[1]) / "qa" / "Bepensa" / "estados" / f"municipios_{C.ENT}.json"
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(json.dumps(dict(zip(it.MUN, it.NOM_MUN)), ensure_ascii=False, indent=1), encoding="utf-8")
 print(f"{C.NOM_ENT}: {len(it)} municipios -> {out.name}")

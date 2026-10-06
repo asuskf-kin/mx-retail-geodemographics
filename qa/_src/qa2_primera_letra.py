@@ -1,19 +1,19 @@
 # %% [markdown]
-# # QA 2 · La primera letra paso a paso contra Nielsen — Bepensa · ZM Mérida · sueros
+# # QA 2 · La primera letra paso a paso contra Nielsen — por ciudad · sueros
 #
 # **Pregunta:** si aplicamos **todo nuestro proceso de la Letra 1** (INEGI, NSE AMAI, Censo por manzana, clúster hexagonal y
-# AltScore) en la coordenada de cada autoservicio de la línea base de Nielsen (`qa/Golden Stores Sueros R.Sur - KO FY'23.xlsx`),
+# AltScore) en la coordenada de cada tienda de la línea base de Nielsen de la ciudad (`qa/<carpeta>/Golden Stores Sueros … .xlsx`:
+# `qa/Bepensa/` = ZM Mérida, autoservicios de la Región Sur; `qa/Guadalajara/` = ZM Guadalajara, farmacias de cadena nacional),
 # ¿cuánto le atinamos a **su primera letra**? Y ¿qué paso del proceso nos acerca o nos aleja?
 #
-# **Alcance:** los 65 autoservicios de la línea base que caen en la **ZM Mérida**, que es donde tenemos todos los insumos (hogares por
-# hexágono, NSE AMAI por AGEB, Censo por manzana y AltScore). Solo la **primera letra** (NSE): la segunda (venta) está en el QA 1.
+# **Alcance:** las tiendas de la línea base que caen en la **ZM** (Mérida 65, Guadalajara 178), que es donde tenemos todos los insumos
+# (hogares por hexágono, NSE AMAI por AGEB, Censo por manzana y AltScore). Solo la **primera letra** (NSE): la segunda (venta) está en el QA 1.
 #
 # **Cómo se lee:** la sección 1 arma, para cada tienda, cada insumo del proceso; la 2 mide cada paso contra Nielsen (AUC: ¿ordena
 # igual?; exactitud y κ: ¿da la misma letra?) con cuatro cortes; la 3 prueba el peso de AltScore y el radio; la 4 da la exactitud
 # del proceso tal como lo usa hoy el 06 y la del mejor proceso; la 5 escribe el **Excel ejecutivo** con QA 1 + QA 2.
 #
-# **Reproducir:** `uv run python src/py2nb.py qa/_src/qa2_primera_letra.py qa/qa2_primera_letra.ipynb` y correr el notebook (antes
-# el pipeline 00 → 06 y `qa/qa_linea_base_nielsen.ipynb`, de donde salen los resultados del QA 1).
+# **Reproducir:** `uv run python qa/correr_qa.py <ciudad>` (corre QA 1 → QA 2 → consistencia interna; antes el pipeline 00 → 06).
 
 # %%
 import os
@@ -44,9 +44,21 @@ from descargas import descargar_fuente, extraer
 
 eda.estilo()
 pd.set_option("display.width", 220, "display.max_columns", 40, "display.float_format", "{:,.3f}".format)
-QA, OUT = BASE / "qa", BASE / "qa" / "salidas"
+# carpeta de cada ciudad en qa/ (igual que el QA 1) y región de la sección 4b: Mérida = todo el archivo (Región Sur, 15 estados);
+# Guadalajara = el área Nielsen de la ZM (el archivo es nacional: 5,676 farmacias)
+QA_CIUDADES = {
+    "merida": dict(carpeta="Bepensa", linea_base="Golden Stores Sueros R.Sur - KO FY'23.xlsx", canal="Autoservicios",
+                   filtro=("Zonas Metropolitanas", "MERIDA"), region=None, region_txt="Región Sur"),
+    "guadalajara": dict(carpeta="Guadalajara", linea_base="Golden Stores Sueros Pharma Nacional - KO FY'23.xlsx", canal="Farmacias de cadena",
+                        filtro=("Región Nielsen", "Area III OESTE CENTRO Guadalajara"), region="Area III OESTE CENTRO Guadalajara",
+                        region_txt="área Nielsen Oeste Centro Guadalajara"),
+}
+QC = QA_CIUDADES[C.CIUDAD]
+QA = BASE / "qa" / QC["carpeta"]
+OUT = QA / "salidas"
 OUT.mkdir(exist_ok=True)
-F_NIELSEN = QA / "Golden Stores Sueros R.Sur - KO FY'23.xlsx"
+F_NIELSEN = QA / QC["linea_base"]
+CANAL, REGION_TXT = QC["canal"], QC["region_txt"]
 F_LETRAS = C.PROC / f"letras_pdv_{C.CLIENTE}_{C.SLUG}.parquet"
 F_HEX = C.PROC / f"hexagonos_h3r{C.H3_RES}_{C.CLIENTE}_{C.SLUG}.gpkg"
 F_AGEB = C.PROC / f"ageb_{C.SLUG}.gpkg"
@@ -96,7 +108,7 @@ print(f"{C.ZM_NOMBRE} · radio {R300} m · clúster NSE H3 res {RES_CL} · AltSc
 # %% [markdown]
 # ## 0. La línea base y su regla de la primera letra
 #
-# **Qué se hace:** se leen los 65 autoservicios de la ZM Mérida con su clúster y su perfil NSE (los % de A/B … D/E del área que
+# **Qué se hace:** se leen las tiendas Nielsen de la ZM con su clúster y su perfil NSE (los % de A/B … D/E del área que
 # reporta Nielsen). De ahí se calcula su nivel NSE N = Σ k·p_k (1 = D/E … 6 = A/B) y se despeja la referencia fija de su índice
 # (ref = % / índice × 100). Es el **techo**: con su propio perfil y su referencia, ¿cuánto se reproducen sus letras?
 #
@@ -110,6 +122,8 @@ cols = [f"{' '.join(str(a).split())}|{b}" if pd.notna(a) and b in ("HHs", "%", "
 nie = raw.iloc[9:].copy()
 nie.columns = cols
 nie = nie[nie["Nielsen ID"].notna()].reset_index(drop=True)
+nie = nie.rename(columns={c: "Cluster" for c in nie.columns if c.strip() == "Cluster"})
+nie["Cadena"] = nie[next(c for c in nie.columns if c.startswith("Cadena de"))]
 for c in NSE:
     for s_ in ("%", "Indice"):
         nie[f"{c}|{s_}"] = pd.to_numeric(nie[f"{c}|{s_}"], errors="coerce")
@@ -117,21 +131,24 @@ pn_all = nie[[f"{c}|%" for c in NSE]].set_axis(NSE, axis=1)
 REF_N = (pn_all / nie[[f"{c}|Indice" for c in NSE]].set_axis(NSE, axis=1) * 100).median()
 REF_N = REF_N / REF_N.sum()
 N_REF = float((REF_N * K_NSE).sum())
-zm = nie[nie["Zonas Metropolitanas"].eq("MERIDA")].reset_index(drop=True)
+AUC_NSE = roc_auc_score(nie["Cluster"].astype(str).str.strip().str[0] == "H", (pn_all * K_NSE).sum(axis=1) / pn_all.sum(axis=1))
+zm = nie[nie[QC["filtro"][0]].astype(str).str.strip().eq(QC["filtro"][1])].reset_index(drop=True)
 zm["lat"], zm["lon"] = zm.Latitud.astype(float), zm.Longitud.astype(float)
 zm["cluster_n"] = zm["Cluster"].astype(str).str.strip()
 zm["L1n"] = zm.cluster_n.str[0]
-zm["cadena"] = zm["Cadena de Autoservicios"].astype(str).str.strip()
+zm["cadena"] = zm["Cadena"].astype(str).str.strip()
 pz = zm[[f"{c}|%" for c in NSE]].set_axis(NSE, axis=1)
 zm["N_nielsen"] = (pz * K_NSE).sum(axis=1) / pz.sum(axis=1)
 techo = medir("0 · Techo", "N de Nielsen (su propio perfil)", f"su referencia regional (N ≥ {N_REF:.2f})", zm.L1n, zm.N_nielsen, N_REF)
-print(f"{len(zm)} autoservicios en la ZM · Nielsen H {(zm.L1n == 'H').mean():.0%} · referencia regional de su índice: "
+AUC_NSE_ZM = roc_auc_score(zm.L1n == "H", zm.N_nielsen)              # en la ZM (en Guadalajara va al revés: H = NSE bajo)
+print(f"{len(zm)} tiendas Nielsen ({CANAL}) en la {C.ZM_NOMBRE} · Nielsen H {(zm.L1n == 'H').mean():.0%} · referencia regional de su índice: "
       + ", ".join(f"{c} {v * 100:.1f}%" for c, v in REF_N.items()) + f" (N = {N_REF:.2f})")
-print(f"Techo: con su propio perfil y su referencia, sus letras se reproducen en {techo['exactitud']:.0%} (κ {techo['κ de Cohen']:.2f}).")
+print(f"Techo: con su propio perfil y su referencia, sus letras se reproducen en {techo['exactitud']:.0%} (κ {techo['κ de Cohen']:.2f}). "
+      f"En toda la línea base su nivel NSE separa sus H de sus L con AUC {AUC_NSE:.2f}" + ("" if AUC_NSE >= 0.75 else ": su 1.ª letra no es de NSE."))
 display(zm.groupby("cadena").agg(tiendas=("L1n", "size"), **{"% H Nielsen": ("L1n", lambda s: (s == "H").mean() * 100)}).round(0))
 
 # %% [markdown]
-# ## 1. Nuestro proceso en la coordenada de cada autoservicio
+# ## 1. Nuestro proceso en la coordenada de cada tienda Nielsen
 #
 # **Qué se hace:** para cada tienda se calcula cada insumo del proceso, en el orden en que la Letra 1 los usa:
 #
@@ -171,6 +188,8 @@ hh_cl = LT.suma_area(hx, LT.hexagonos_en_radio(cla, clo, R300, C.H3_RES)).set_ax
 zm["N_cluster"] = LT.nivel_medio(hh_cl).to_numpy()
 zm["abc_cluster"] = ((hh_cl["A/B"] + hh_cl["C+"]) / hh_cl.sum(axis=1).replace(0, np.nan) * 100).to_numpy()
 zm["hog_cluster"] = hh_cl.sum(axis=1).to_numpy()
+for c in NSE:
+    zm[f"pct_{c}"] = (100 * hh_cl[c] / hh_cl.sum(axis=1).replace(0, np.nan)).to_numpy()
 # paso 7b · buffer de la propia tienda (sin clúster)
 hh_pr = LT.suma_area(hx, LT.hexagonos_en_radio(zm.lat, zm.lon, R300, C.H3_RES)).set_axis(NSE, axis=1)
 zm["N_buffer_tienda"] = LT.nivel_medio(hh_pr).to_numpy()
@@ -238,10 +257,10 @@ display(corr_.round(2))
 #
 # | Corte | Qué es | Para qué variables |
 # |---|---|---|
-# | relativo | la media de las 65 tiendas | todas |
+# | relativo | la media de las tiendas Nielsen de la ZM | todas |
 # | por cadena | la media de su cadena (el análogo del **subcanal** con que compara el 06) | todas |
 # | del 06 | la media de nuestros **PDV Tradicional objetivo** (el corte que usa hoy la Letra 1) | escala N (1-6) |
-# | referencia Nielsen | N de su referencia regional (N ≥ 3.01) | escala N (1-6) |
+# | referencia Nielsen | N de la referencia fija de su índice (Mérida N ≥ 3.01) | escala N (1-6) |
 #
 # **Por qué:** el AUC dice si el insumo **ordena** las zonas como Nielsen sin depender del corte; la exactitud dice si con ese corte
 # sale la **misma letra**. Separar ambas cosas dice si lo que hay que cambiar es el insumo o el corte.
@@ -262,7 +281,7 @@ for nombre, col in {**ESCALA_N, **OTRAS}.items():
     lo_, hi_ = boot(lambda y, x: roc_auc_score(y, x), (zm.L1n[ok] == "H").to_numpy(), x_[ok].to_numpy())
     auc.append({"paso": nombre, "AUC": a_, "IC95 AUC": f"[{lo_:.2f}, {hi_:.2f}]", "n": int(ok.sum()),
                 "ρ con el N de Nielsen": stats.spearmanr(x_[ok], zm.N_nielsen[ok])[0]})
-    pasos.append(medir(nombre, col, "relativo (media de las 65)", zm.L1n, x_, x_.mean()))
+    pasos.append(medir(nombre, col, f"relativo (media de las {len(zm)})", zm.L1n, x_, x_.mean()))
     pasos.append(medir(nombre, col, "por cadena (análogo del subcanal)", zm.L1n, x_, media_cadena(col)))
     if col in ESCALA_N.values():
         pasos.append(medir(nombre, col, "del 06 (media de nuestros PDV Tradicional)", zm.L1n, x_, CORTE_06[col]))
@@ -272,9 +291,10 @@ pasos = pd.DataFrame(pasos)
 display(auc.round(3))
 display(pasos.round(3))
 mejor_auc = auc.loc[auc.AUC.idxmax()]
-PASOS = (f"Todos los insumos NSE ordenan las zonas como Nielsen (AUC de {auc.AUC.min():.2f} a {auc.AUC.max():.2f}); el que más se acerca es "
-         f"{mejor_auc.paso} (AUC {mejor_auc.AUC:.2f} {mejor_auc['IC95 AUC']}). AltScore solo es el más débil (AUC "
-         f"{auc.set_index('paso').loc['5 · AltScore solo (clúster)', 'AUC']:.2f}). La exactitud depende sobre todo del corte (tabla de pasos).")
+PASOS = (("Todos los insumos NSE ordenan las zonas como Nielsen" if auc.AUC.min() >= 0.75 else "Todos los insumos NSE ordenan las zonas al revés que Nielsen (sus H están en zonas de NSE más bajo)" if auc.AUC.max() < 0.5 else "Los insumos NSE ordenan las zonas de Nielsen con AUC")
+         + f" (AUC de {auc.AUC.min():.2f} a {auc.AUC.max():.2f}); el más alto es "
+         f"{mejor_auc.paso} (AUC {mejor_auc.AUC:.2f} {mejor_auc['IC95 AUC']}). AltScore solo: AUC "
+         f"{auc.set_index('paso').loc['5 · AltScore solo (clúster)', 'AUC']:.2f}. La exactitud depende sobre todo del corte (tabla de pasos).")
 print(PASOS)
 
 fig, ax = plt.subplots(1, 2, figsize=(17, 6))
@@ -305,13 +325,13 @@ for lam in [0, 0.1, 0.25, 0.5, 0.75, 1.0]:
     corte_06_lam = float(LT.mover_nse(ob.N_inegi, ob.N_alt, lam).mean())      # media de nuestros PDV con ese mismo λ
     for corte, u_ in [("relativo", x_.mean()), ("del 06", corte_06_lam)]:
         f_ = medir("λ AltScore", f"λ = {lam:g}", corte, zm.L1n, x_, u_)
-        f_["AUC"] = roc_auc_score(zm.L1n == "H", x_)
+        f_["AUC"] = roc_auc_score(zm.L1n.to_numpy()[x_.notna().to_numpy()] == "H", x_.dropna())
         sens.append(f_)
 for r_ in [200, 300, 400, 600, 800, 1000, 1500]:
     hh_r = LT.suma_area(hx, LT.hexagonos_en_radio(cla, clo, r_, C.H3_RES)).set_axis(NSE, axis=1)
     x_ = LT.nivel_medio(hh_r)
     f_ = medir("radio del clúster", f"{r_} m", "relativo", zm.L1n, x_, x_.mean())
-    f_["AUC"] = roc_auc_score(zm.L1n == "H", x_)
+    f_["AUC"] = roc_auc_score(zm.L1n.to_numpy()[x_.notna().to_numpy()] == "H", x_.dropna())
     sens.append(f_)
 sens = pd.DataFrame(sens)
 display(sens[["paso", "variable", "corte", "exactitud", "κ de Cohen", "IC95 κ", "AUC", "% H nuestro"]].round(3))
@@ -348,25 +368,28 @@ FINAL_L1 = (f"Primera letra: hoy (proceso del 06) acertamos {p06.exactitud:.0%} 
 print(FINAL_L1)
 
 # %% [markdown]
-# ## 4b. Toda la Región Sur: la primera letra de las 1,420 tiendas
+# ## 4b. Toda la región de la línea base: la primera letra de cada tienda
 #
-# **Qué se hace:** el mismo proceso de la Letra 1 en la coordenada de cada tienda de la línea base, con los insumos del notebook 01
-# corrido por estado (`qasur_<ENT>`: los 15 estados de la Región Sur, todos sus municipios). Igual que el 04: cada manzana lleva el
+# **Qué se hace:** el mismo proceso de la Letra 1 en la coordenada de cada tienda de la región (Mérida: las 1,420 tiendas de la Región
+# Sur; Guadalajara: las 178 farmacias del área Nielsen Oeste Centro Guadalajara, todas en la ZM). Las tiendas de la ZM usan el 04 de la
+# ciudad (sección 1); fuera de la ZM, los insumos del notebook 01 corrido por estado (`qasur_<ENT>`: los 15 estados de la Región Sur,
+# todos sus municipios; ver `qa/preparar_estados.py`). Igual que el 04: cada manzana lleva el
 # NSE de su AGEB en proporción a sus hogares, se suman las localidades rurales, se actualiza a 2025 con el crecimiento municipal
 # de la Intercensal y se reparte **por área** en hexágonos H3 res 10; el clúster es el hexágono H3 res 9 de la tienda + los
 # hexágonos res 10 con centro a ≤ 300 m de su centro. Solo se arman los hexágonos alrededor de las tiendas.
-# **Validación:** en las 65 tiendas de la ZM Mérida este cálculo debe dar el mismo nivel NSE que el del 04 (sección 1).
-# AltScore solo existe en la ZM Mérida: fuera de ella la letra va solo con INEGI (λ = 0) y el corte "como hoy" es la media INEGI
+# **Validación:** en las tiendas de la ZM este cálculo por estado debe dar el mismo nivel NSE que el del 04 (sección 1), si el estado
+# está procesado. AltScore solo existe en la ZM: fuera de ella la letra va solo con INEGI (λ = 0) y el corte "como hoy" es la media INEGI
 # de nuestros PDV (mismo corte del 06 sin AltScore).
 #
-# **Por qué:** para tener nuestra estimación en todas y cada una de las tiendas de Nielsen, no solo en Mérida.
+# **Por qué:** para tener nuestra estimación en todas y cada una de las tiendas de la región, no solo en la ZM.
 
 # %%
 from shapely.geometry import Polygon
 
-ENT_DE = {"Campeche": "04", "Chiapas": "07", "Ciudad de México": "09", "Guerrero": "12", "Hidalgo": "13", "México": "15", "Morelos": "17",
-          "Oaxaca": "20", "Puebla": "21", "Querétaro": "22", "Quintana Roo": "23", "Tabasco": "27", "Tlaxcala": "29",
-          "Veracruz de Ignacio de la Llave": "30", "Yucatán": "31"}
+ENT_DE = {v: k for k, v in C.ESTADOS.items()} | {"Veracruz de Ignacio de la Llave": "30", "Coahuila de Zaragoza": "05",
+                                                  "Michoacán de Ocampo": "16"}
+if QC["region"]:
+    nie = nie[nie["Región Nielsen"].astype(str).str.strip().eq(QC["region"])].reset_index(drop=True)
 nie["ENT"] = nie.Estado.astype(str).str.strip().map(ENT_DE)
 assert nie.ENT.notna().all(), f"estado sin clave: {nie.loc[nie.ENT.isna(), 'Estado'].unique()}"
 nie["lat"], nie["lon"] = pd.to_numeric(nie.Latitud, errors="coerce"), pd.to_numeric(nie.Longitud, errors="coerce")
@@ -416,12 +439,19 @@ for ent, filas in nie.groupby("ENT"):
     nie.loc[filas.index, COLS_REG] = n_[COLS_REG].to_numpy(dtype=float)
     estado_ok[ent] = st_
 print("Estados:", ", ".join(f"{e} {v}" for e, v in estado_ok.items()))
-# validación en la ZM Mérida: cálculo regional vs el del 04 (sección 1)
-val = zm[["Nielsen ID", "N_cluster"]].merge(nie[["Nielsen ID", "N_region"]], on="Nielsen ID")
-RHO_VAL = stats.spearmanr(val.N_cluster, val.N_region, nan_policy="omit")[0]
-DIF_VAL = (val.N_cluster - val.N_region).abs().median()
-print(f"Validación en la ZM Mérida (65 tiendas): ρ = {RHO_VAL:.3f}, |diferencia| mediana {DIF_VAL:.3f} en la escala 1-6 (mismo método, sin el 04).")
-# letra "como hoy": en la ZM Mérida, la del 04 con AltScore; fuera, INEGI con el corte INEGI de nuestros PDV
+# validación en la ZM: cálculo por estado vs el del 04 (sección 1), si el estado de la ZM está procesado
+val = zm[["Nielsen ID", "N_cluster"]].merge(nie[["Nielsen ID", "N_region"]], on="Nielsen ID").dropna()
+RHO_VAL = stats.spearmanr(val.N_cluster, val.N_region)[0] if len(val) > 2 else np.nan
+DIF_VAL = (val.N_cluster - val.N_region).abs().median() if len(val) else np.nan
+VALIDACION = (f"En las {len(val)} tiendas de la {C.ZM_NOMBRE} el cálculo por estado da el mismo nivel NSE que el del notebook 04 (ρ = {RHO_VAL:.2f})."
+              if len(val) > 2 else f"No aplica: las tiendas de la {C.ZM_NOMBRE} usan directo el 04 de la ciudad (su estado no se procesó aparte).")
+print(VALIDACION)
+# en la ZM, hogares y % por nivel del clúster salen del 04 (sección 1)
+_zi = zm.set_index("Nielsen ID")
+for c_ in COLS_REG:
+    src_ = {"N_region": "N_cluster", "hog_region": "hog_cluster"}.get(c_, c_)
+    nie[c_] = nie[c_].fillna(nie["Nielsen ID"].map(_zi[src_]))
+# letra "como hoy": en la ZM, la del 04 con AltScore; fuera, INEGI con el corte INEGI de nuestros PDV
 nie["N_est"] = nie["Nielsen ID"].map(zm.set_index("Nielsen ID").N_cluster_alt).fillna(nie.N_region)
 en_zm = nie["Nielsen ID"].isin(zm["Nielsen ID"])
 corte_hoy = np.where(en_zm, CORTE_06["N_cluster_alt"], CORTE_06["N_cluster"])
@@ -429,9 +459,9 @@ nie["L1_hoy"] = np.where(nie.N_est.isna(), None, np.where(nie.N_est >= corte_hoy
 nie["L1_rel"] = np.where(nie.N_est.isna(), None, np.where(nie.N_est >= nie.N_est.mean(), "H", "L"))
 nie["L1n"] = nie["Cluster"].astype(str).str.strip().str[0]
 okr = nie.N_est.notna()
-reg_hoy = medir("4b · Región Sur", "N_est", "como hoy (corte del 06)", nie.L1n[okr], nie.N_est[okr], corte_hoy[okr.to_numpy()])
-reg_rel = medir("4b · Región Sur", "N_est", "relativo (media de las tiendas)", nie.L1n[okr], nie.N_est[okr], nie.N_est[okr].mean())
-reg_ref = medir("4b · Región Sur", "N_est", f"referencia Nielsen (N ≥ {N_REF:.2f})", nie.L1n[okr], nie.N_est[okr], N_REF)
+reg_hoy = medir(f"4b · {REGION_TXT}", "N_est", "como hoy (corte del 06)", nie.L1n[okr], nie.N_est[okr], corte_hoy[okr.to_numpy()])
+reg_rel = medir(f"4b · {REGION_TXT}", "N_est", "relativo (media de las tiendas)", nie.L1n[okr], nie.N_est[okr], nie.N_est[okr].mean())
+reg_ref = medir(f"4b · {REGION_TXT}", "N_est", f"referencia Nielsen (N ≥ {N_REF:.2f})", nie.L1n[okr], nie.N_est[okr], N_REF)
 region = pd.DataFrame([reg_hoy, reg_rel, reg_ref])
 nie["L1_ref"] = np.where(nie.N_est.isna(), None, np.where(nie.N_est >= N_REF, "H", "L"))
 _e = nie.assign(est=okr, ok_hoy=lambda t: (t.L1_hoy == t.L1n).where(okr), ok_rel=lambda t: (t.L1_rel == t.L1n).where(okr),
@@ -445,19 +475,35 @@ pct_cols = [c for c in por_estado if c.startswith("%")]
 por_estado[pct_cols] *= 100
 display(region.round(3))
 display(por_estado.round(0))
-REGION = (f"Región Sur ({int(okr.sum()):,} de {len(nie):,} tiendas con estimación): como hoy {reg_hoy['exactitud']:.0%}, corte relativo "
-          f"{reg_rel['exactitud']:.0%}, referencia de Nielsen {reg_ref['exactitud']:.0%}. Validación del cálculo en Mérida: ρ = {RHO_VAL:.2f}.")
+# lo mismo por municipio (toda la región) + las comparaciones del QA 1 en los municipios de la ZM
+_e["Municipio_"] = _e.Municipio.astype(str).str.replace(r"\s*\(.*\)\s*$", "", regex=True).str.strip()
+por_municipio = _e.groupby(["Estado", "Municipio_"]).agg(**{"tiendas Nielsen": ("L1n", "size"), "con nuestra estimación": ("est", "sum"),
+                                                          "% H Nielsen": ("H_n", "mean"), "% H nuestro (como hoy)": ("H_o", "mean"),
+                                                          "% acierto 1.ª letra como hoy": ("ok_hoy", "mean"),
+                                                          "% acierto 1.ª letra corte relativo": ("ok_rel", "mean"),
+                                                          "% acierto 1.ª letra referencia Nielsen": ("ok_ref", "mean")})
+pct_mun = [c for c in por_municipio if c.startswith("%")]
+por_municipio[pct_mun] *= 100
+_ac = pd.read_parquet(OUT / "qa1_aciertos_tienda.parquet")
+_ac_cols = [c for c in _ac if c not in ("Nielsen ID", "Municipio")]
+_ac_m = (_ac.groupby("Municipio")[_ac_cols].mean() * 100).rename(columns=lambda c: f"% acierto QA 1 · {c}")
+por_municipio = por_municipio.reset_index().rename(columns={"Municipio_": "Municipio"}).merge(_ac_m.reset_index(), on="Municipio", how="left")
+pct_mun = [c for c in por_municipio if c.startswith("%")]
+por_municipio = por_municipio.sort_values(["Estado", "tiendas Nielsen"], ascending=[True, False])
+display(por_municipio.round(0).head(20))
+REGION = (f"{REGION_TXT} ({int(okr.sum()):,} de {len(nie):,} tiendas con estimación): como hoy {reg_hoy['exactitud']:.0%}, corte relativo "
+          f"{reg_rel['exactitud']:.0%}, referencia de Nielsen {reg_ref['exactitud']:.0%}. {VALIDACION}")
 print(REGION)
 
 # %% [markdown]
 # ## 5. Entregable sencillo: el QA en %
 #
-# **Qué se hace:** una sola hoja (`qa/salidas/QA_en_porcentaje_bepensa_zm_merida.xlsx`) con el % de supermercados de Nielsen en
-# los que acertamos su letra, en las dos formas de inferirla:
+# **Qué se hace:** una sola hoja (`qa/<carpeta>/salidas/QA_en_porcentaje_<cliente>_<zm>.xlsx`) con el % de tiendas de Nielsen en
+# las que acertamos su letra, en las dos formas de inferirla:
 # **QA 1 · tiendas alrededor** (la letra de la mayoría de nuestras tiendas Tradicional a 500 m) y **QA 2 · punto geográfico**
-# (nuestro proceso de la Letra 1 aplicado en la coordenada del supermercado). El detalle técnico queda en los notebooks.
-# Una segunda hoja, **Tiendas**, trae las 1,420 tiendas de la línea base con su coordenada, su primera letra de Nielsen y nuestra
-# estimación (solo en la ZM Mérida, donde hay insumos INEGI procesados; el resto dice 'sin estimar').
+# (nuestro proceso de la Letra 1 aplicado en la coordenada de la tienda Nielsen). El detalle técnico queda en los notebooks.
+# Una segunda hoja, **Tiendas**, trae las tiendas de la región de la línea base con su coordenada, su primera letra de Nielsen y
+# nuestra estimación (las que no tienen insumos INEGI procesados dicen 'sin estimar' y por qué).
 
 # %%
 import excel_kin as X
@@ -466,27 +512,27 @@ f1 = pd.read_parquet(OUT / "qa1_exactitud_final.parquet").set_index("comparació
 g1 = f1.loc["Letra 1 · geografía (mayoría de nuestros PDV a 500 m)"]
 g2 = f1.loc["Letra 2 · geografía (mayoría de nuestros PDV a 500 m)"]
 g12 = f1.loc["Clúster · L1 y L2 geografía (mayoría de nuestros PDV a 500 m)"]
-TIENDAS = "Letra de la mayoría de nuestras tiendas Tradicional a 500 m del supermercado"
-PUNTO = "Nuestro proceso de la Letra 1 (NSE del clúster + AltScore) en la coordenada del supermercado"
+TIENDAS = "Letra de la mayoría de nuestras tiendas Tradicional a 500 m de la tienda Nielsen"
+PUNTO = "Nuestro proceso de la Letra 1 (NSE del clúster + AltScore) en la coordenada de la tienda Nielsen"
 resumen = pd.DataFrame([
     ("QA 1 · Tiendas alrededor", TIENDAS, "Letra 1 (NSE)", g1.exactitud, int(g1.n)),
     ("QA 1 · Tiendas alrededor", TIENDAS, "Letra 2 (venta)", g2.exactitud, int(g2.n)),
     ("QA 1 · Tiendas alrededor", TIENDAS, "Las dos letras", g12.exactitud, int(g12.n)),
-    ("QA 2 · Punto geográfico · ZM Mérida", PUNTO, "Letra 1 · como hoy (corte del 06)", p06.exactitud, int(p06.n)),
-    ("QA 2 · Punto geográfico · ZM Mérida", PUNTO, f"Letra 1 · con el corte {pmejor.corte.split(' (')[0]}", pmejor.exactitud, int(pmejor.n)),
-    ("QA 2 · Punto geográfico · Región Sur", PUNTO, "Letra 1 · como hoy (corte del 06)", reg_hoy["exactitud"], int(reg_hoy["n"])),
-    ("QA 2 · Punto geográfico · Región Sur", PUNTO, "Letra 1 · con el corte relativo", reg_rel["exactitud"], int(reg_rel["n"])),
-], columns=["QA", "cómo se infiere la letra", "letra", "% de acierto", "supermercados"])
+    (f"QA 2 · Punto geográfico · {C.ZM_NOMBRE}", PUNTO, "Letra 1 · como hoy (corte del 06)", p06.exactitud, int(p06.n)),
+    (f"QA 2 · Punto geográfico · {C.ZM_NOMBRE}", PUNTO, f"Letra 1 · con el corte {pmejor.corte.split(' (')[0]}", pmejor.exactitud, int(pmejor.n)),
+    (f"QA 2 · Punto geográfico · {REGION_TXT}", PUNTO, "Letra 1 · como hoy (corte del 06)", reg_hoy["exactitud"], int(reg_hoy["n"])),
+    (f"QA 2 · Punto geográfico · {REGION_TXT}", PUNTO, "Letra 1 · con el corte relativo", reg_rel["exactitud"], int(reg_rel["n"])),
+], columns=["QA", "cómo se infiere la letra", "letra", "% de acierto", "tiendas Nielsen"])
 resumen["% de acierto"] = (resumen["% de acierto"] * 100).round(0)
 display(resumen)
-NOTA = ("% de acierto = % de supermercados de Nielsen (Golden Stores Sueros FY'23, ZM Mérida) con la misma letra que la nuestra. "
+NOTA = (f"% de acierto = % de tiendas de Nielsen (Golden Stores Sueros FY'23, {CANAL}, {C.ZM_NOMBRE}) con la misma letra que la nuestra. "
         "Nielsen es canal Moderno y nosotros Tradicional: no hay tiendas en común, se compara la zona.")
-# hoja Tiendas: coordenada y letras de cada supermercado
+# hoja Tiendas: coordenada y letras de cada tienda Nielsen
 L1_06 = np.where(zm.N_cluster_alt >= CORTE_06["N_cluster_alt"], "H", "L")
 L1_rel = np.where(zm.N_cluster_alt >= zm.N_cluster_alt.mean(), "H", "L")
-# todas las tiendas de la línea base (1,420) con nuestra estimación (sección 4b)
+# todas las tiendas de la región de la línea base con nuestra estimación (sección 4b)
 SIN_EST = "sin estimar (sin insumos INEGI del estado)"
-MOTIVO = pd.Series(np.select([okr, nie.ENT.map(estado_ok).ne("ok"), nie.lat.isna() | nie.lon.isna()],
+MOTIVO = pd.Series(np.select([okr, nie.ENT.map(estado_ok).ne("ok") & ~en_zm, nie.lat.isna() | nie.lon.isna()],
                              ["no aplica", "sin estimar · falta procesar los insumos INEGI del estado", "sin estimar · Nielsen no trae coordenada"],
                              "sin estimar · sin hogares INEGI a 300 m de la tienda"), index=nie.index)
 tiendas = pd.DataFrame({
@@ -496,7 +542,7 @@ tiendas = pd.DataFrame({
     "municipio": nie.Municipio, "1.ª letra Nielsen": nie.L1n, "nuestra 1.ª letra (como hoy)": nie.L1_hoy})
 # desglose: de dónde sale nuestra letra en cada tienda
 alt_zm = zm.set_index("Nielsen ID")
-SIN_ALT = "no aplica · AltScore solo en la ZM Mérida"
+SIN_ALT = f"no aplica · AltScore solo en la {C.ZM_NOMBRE}"
 desg = pd.DataFrame({
     "estado": nie.Estado, "hexágono H3 res 9 (clúster)": nie.cl,
     "hogares 2025 en el clúster (300 m)": nie.hog_region.round(0),
@@ -535,23 +581,27 @@ pe_ok = por_estado[por_estado["con nuestra estimación"] > 0]
 mejor_e, peor_e = pe_ok["% acierto como hoy"].idxmax(), pe_ok["% acierto como hoy"].idxmin()
 sin_e = MOTIVO[~okr].str.replace("sin estimar · ", "").value_counts()
 RESUMEN = pd.DataFrame([
-    ("Qué se compara", "La 1.ª y 2.ª letra de Golden Stores de Nielsen (Sueros FY'23, Región Sur) contra las nuestras. Nielsen es canal "
-     "Moderno (supermercados) y nosotros Tradicional: no hay tiendas en común, por eso se compara la zona de cada supermercado."),
-    ("QA 1 · tiendas alrededor (ZM Mérida)", f"La letra de la mayoría de nuestras tiendas Tradicional a 500 m acierta la Letra 1 en "
-     f"{g1.exactitud:.0%}, la Letra 2 en {g2.exactitud:.0%} y las dos a la vez en {g12.exactitud:.0%} ({int(g1.n)} supermercados)."),
-    ("QA 2 · punto geográfico (ZM Mérida)", f"Nuestro proceso de la Letra 1 en la coordenada del supermercado acierta {p06.exactitud:.0%} "
-     f"como hoy y {pmejor.exactitud:.0%} con el corte relativo ({int(p06.n)} supermercados)."),
-    ("QA 2 · punto geográfico (Región Sur)", f"{int(okr.sum()):,} de {len(nie):,} tiendas con estimación: como hoy {reg_hoy['exactitud']:.0%}, "
+    ("Qué se compara", f"La 1.ª y 2.ª letra de Golden Stores de Nielsen (Sueros FY'23, {CANAL}) contra las nuestras ({C.CLIENTE_NOMBRE}). Nielsen es canal "
+     "Moderno y nosotros Tradicional: no hay tiendas en común, por eso se compara la zona de cada tienda Nielsen."),
+    ("Qué decide la 1.ª letra de Nielsen", f"Su propio nivel NSE separa sus H de sus L con AUC {AUC_NSE:.2f} en toda la línea base y {AUC_NSE_ZM:.2f} en la {C.ZM_NOMBRE} (0.5 = azar; < 0.5 = al revés, H en zonas de NSE más bajo). "
+     + ("Es una letra de NSE: nuestra Letra 1 se puede comparar con ella." if AUC_NSE >= 0.75 else
+        "No es una letra de NSE (en farmacias Nielsen usa hogares target de HomeScan): el acierto de nuestra Letra 1 tiene un techo bajo.")),
+    (f"QA 1 · tiendas alrededor ({C.ZM_NOMBRE})", f"La letra de la mayoría de nuestras tiendas Tradicional a 500 m acierta la Letra 1 en "
+     f"{g1.exactitud:.0%}, la Letra 2 en {g2.exactitud:.0%} y las dos a la vez en {g12.exactitud:.0%} ({int(g1.n)} tiendas Nielsen)."),
+    (f"QA 2 · punto geográfico ({C.ZM_NOMBRE})", f"Nuestro proceso de la Letra 1 en la coordenada de la tienda Nielsen acierta {p06.exactitud:.0%} "
+     f"como hoy y {pmejor.exactitud:.0%} con el {pmejor.corte.split(' (')[0]} ({int(p06.n)} tiendas Nielsen)."),
+    (f"QA 2 · punto geográfico ({REGION_TXT})", f"{int(okr.sum()):,} de {len(nie):,} tiendas con estimación: como hoy {reg_hoy['exactitud']:.0%}, "
      f"corte relativo {reg_rel['exactitud']:.0%}, referencia de Nielsen {reg_ref['exactitud']:.0%}."),
     ("Dónde acertamos más y menos", f"Mejor estado: {mejor_e} ({pe_ok.loc[mejor_e, '% acierto como hoy']:.0f}%); peor: {peor_e} "
      f"({pe_ok.loc[peor_e, '% acierto como hoy']:.0f}%). Detalle en la hoja 'Por estado'."),
-    ("Por qué falla 'como hoy'", f"Nuestro corte (media de nuestros PDV Tradicional de Mérida) marca H en {reg_hoy['% H nuestro']:.0f}% de "
-     f"las tiendas contra {reg_hoy['% H Nielsen']:.0f}% de Nielsen: el NSE de la zona sí coincide, la diferencia es dónde se corta."),
-    ("Validación del cálculo", f"En las 65 tiendas de la ZM Mérida el cálculo regional da el mismo nivel NSE que el del notebook 04 "
-     f"(ρ = {RHO_VAL:.2f})."),
+    ("Por qué falla 'como hoy'", f"Nuestro corte (media de nuestros PDV Tradicional de la {C.ZM_NOMBRE}) marca H en {reg_hoy['% H nuestro']:.0f}% de "
+     f"las tiendas contra {reg_hoy['% H Nielsen']:.0f}% de Nielsen" + (": el NSE de la zona sí coincide, la diferencia es dónde se corta." if AUC_NSE >= 0.75
+     else ". Además, la 1.ª letra de esta línea base no es de NSE (AUC de su propio NSE en la sección 0), así que ningún corte del NSE la reproduce bien.")),
+    ("Whisp: ¿mueve a favor?", pd.read_parquet(OUT / "qa1_textos.parquet").set_index("clave").texto.get("WHISP", "no se calculó (correr el QA 1)")),
+    ("Validación del cálculo", VALIDACION),
     ("Tiendas sin estimar", "ninguna" if okr.all() else
      f"{int((~okr).sum())}: " + "; ".join(f"{n} {e}" for e, n in sin_e.items()) + "."),
-    ("Cómo leer el Excel", "'QA en %' = el % de acierto de cada forma de inferir la letra · 'Por estado' = lo mismo por estado · "
+    ("Cómo leer el Excel", "'QA en %' = el % de acierto de cada forma de inferir la letra · 'Por estado' y 'Por municipio' = lo mismo por estado y municipio · "
      "'Tiendas' = cada tienda de Nielsen con su letra, la nuestra y de dónde sale (hogares, % por nivel NSE, nivel NSE, AltScore y corte)."),
 ], columns=["tema", "resultado"])
 display(RESUMEN)
@@ -559,9 +609,9 @@ display(RESUMEN)
 wb = X.libro()
 X.hoja_tabla(wb, "Resumen", RESUMEN, titulo="QA contra Nielsen: resumen", ajustar=True, anchos={"tema": 36, "resultado": 120})
 X.hoja_tabla(wb, "QA en %", resumen, titulo="¿Cuánto le atinamos a las letras de Nielsen?", nota=NOTA, ajustar=True,
-             formatos={"% de acierto": r"0\%"}, anchos={"QA": 26, "cómo se infiere la letra": 62, "letra": 34, "% de acierto": 14, "supermercados": 14})
-X.hoja_tabla(wb, "Tiendas", tiendas, titulo="Las 1,420 tiendas de Nielsen: su primera letra y la nuestra",
-             nota="'Como hoy' = proceso de la Letra 1 del 06 en la coordenada de la tienda (ZM Mérida con AltScore; resto de la región solo INEGI).",
+             formatos={"% de acierto": r"0\%"}, anchos={"QA": 34, "cómo se infiere la letra": 62, "letra": 34, "% de acierto": 14, "tiendas Nielsen": 14})
+X.hoja_tabla(wb, "Tiendas", tiendas, titulo=f"Las {len(tiendas):,} tiendas de Nielsen ({REGION_TXT}): su primera letra y la nuestra",
+             nota=f"'Como hoy' = proceso de la Letra 1 del 06 en la coordenada de la tienda ({C.ZM_NOMBRE} con AltScore; resto de la región solo INEGI).",
              formatos={"latitud": "0.000000", "longitud": "0.000000"},
              anchos={"tienda Nielsen": 44, "colonia (Nielsen)": 28, "municipio": 26, "nuestra 1.ª letra (como hoy)": 34, "acierta (como hoy)": 34,
                      "estado": 22, "hexágono H3 res 9 (clúster)": 18, "cómo se calcula": 60})
@@ -572,6 +622,16 @@ pe = pe.astype(object).where(pe.notna(), SIN_EST)
 X.hoja_tabla(wb, "Por estado", pe, titulo="La primera letra por estado: cuántas tiendas y cuánto acertamos",
              nota="Acierto = % de tiendas de Nielsen del estado con la misma 1.ª letra que la nuestra (solo tiendas con estimación).",
              formatos={c: r"0\%" for c in pct_cols}, anchos={"Estado": 30})
+pm = por_municipio.copy()
+pm[pct_mun] = pm[pct_mun].astype(float).round(0)
+_fuera = pm["% acierto 1.ª letra como hoy"].notna() & pm[[c for c in pct_mun if "QA 1" in c]].isna().all(axis=1)
+pm = pm.astype(object)
+for c_ in pct_mun:
+    pm[c_] = pm[c_].where(pm[c_].notna(), np.where(c_.startswith("% acierto QA 1") & _fuera, f"no aplica · fuera de la {C.ZM_NOMBRE}", SIN_EST))
+X.hoja_tabla(wb, "Por municipio", pm, titulo="% de acierto por municipio: cuántas tiendas y cuánto acertamos",
+             nota=("Acierto = % de tiendas de Nielsen del municipio con la misma letra que la nuestra. '1.ª letra' = punto geográfico (toda la "
+                   f"región); 'QA 1' = tiendas alrededor y Whisp (solo la {C.ZM_NOMBRE}). n por municipio chico: leer junto con las tiendas."),
+             formatos={c: r"0\%" for c in pct_mun}, anchos={"Estado": 26, "Municipio": 30})
 XLSX = OUT / f"QA_en_porcentaje_{C.CLIENTE}_{C.SLUG}.xlsx"
 try:
     wb.save(XLSX)
