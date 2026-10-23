@@ -61,7 +61,18 @@ Para replicarlo en otra ciudad usa la skill `/nse-tiendas-mx` (en `.claude/skill
    la ZM del Valle de México es de 3 estados y `config.CIUDADES` es de uno solo → preguntar el alcance. **Al terminar la corrida se
    crean los dos artifacts** "Golden Stores · Tradicional · <BOTTLER> <Ciudad>" y "Letras por PDV · <BOTTLER> <Ciudad>" y se registran
    abajo. Pasos completos: sección "Bottler o ciudad nuevos" de la skill golden-stores-kin.
-8. **QA contra Nielsen = todos los QA** (usuario, 2026-10-05: "no olvides sacar todo los qa"): una carpeta por ciudad en `qa/`
+8. **Actualizar mapa y Excel KO desde una ruta** (usuario, 2026-10-23). El usuario manda la carpeta `cliente` con este prompt:
+   > Actualiza el mapa y el Excel KO de esta carpeta: `C:\Users\KIN\Desktop\Kin\mx-retail-geodemographics\outputs\{ciudad}\{bottler}\cliente`
+   > (si la ciudad no está configurada: estados `09,15`)
+
+   Se corre `uv run python .claude/skills/golden-stores-kin/scripts/version_ko.py "<ruta>" [--estados 09,15]`: toma el mapa
+   `06_mapa_qa_letras_*.html` y el `*reducido*.xlsx` **normales** de esa carpeta y escribe al lado sus `_KO` (no toca los originales):
+   hexágonos res 9/8/7, código postal (si no lo traen, con el DENUE de la ciudad configurada o de `--estados`) y solo filas con valor
+   (con letras y, si hay Whisp, con share Whisp). Después: abrir el mapa KO en el navegador (sin errores, paso 5 = código postal) y
+   revisar que el Excel KO empiece con `Hexágono res 9 · res 8 · res 7 · Código postal (zipcode) · pos_id · Subcanal`, sin celdas vacías.
+   Si en la carpeta hay más de un mapa o reducido normal, se detiene y lo dice. Si se pide también el reducido normal limpio o con
+   código postal, eso lo hace el 06 (`src/correr.py --pasos 06 <ciudad>`; la versión KO corre sola al final).
+9. **QA contra Nielsen = todos los QA** (usuario, 2026-10-05: "no olvides sacar todo los qa"): una carpeta por ciudad en `qa/`
    (`Bepensa` = Mérida, `Guadalajara` = Arca) y `uv run python qa/correr_qa.py <ciudad>` (QA 1, QA 2 y base vs final). Incluye
    **Whisp** ("mira si mueve a favor": sin vs con Whisp en Letra 2, clúster y prioridad; **la 1.ª letra es NSE y Whisp no la mueve**)
    y el **% de acierto por municipio** (hoja "Por municipio" en el QA 1 y en "QA en %").

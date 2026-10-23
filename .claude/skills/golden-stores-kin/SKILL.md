@@ -148,6 +148,11 @@ letras** y, si el archivo trae Whisp, con share Whisp (usuario, 2026-10-23); el 
 (`src/codigos_postales.py`: DENUE más cercano, ≤ 500 m, acierto LOO ≈ 91%). Guadalajara: 39,186 PDV; mapa 9,709 · 2,146 · 496
 hexágonos; letra del hexágono = la del PDV en 77% · 71% · 66%.
 
+**Actualizar desde una ruta (usuario, 2026-10-23):** si el usuario manda `outputs\{ciudad}\{bottler}\cliente` ("actualiza el mapa y
+el Excel KO de esta carpeta"), correr `uv run python .claude/skills/golden-stores-kin/scripts/version_ko.py "<ruta>" [--estados 09,15]`
+(`--estados` solo si la ciudad no está en `config.CIUDADES` y el Excel no trae código postal). Busca ahí el mapa y el reducido normales
+y deja sus `_KO`; luego verificar el mapa en el navegador y las primeras columnas del Excel.
+
 **Láminas que explican el mapa** (para pegar en un deck): `uv run python .claude/skills/golden-stores-kin/scripts/laminas_mapa.py
 [--pos 2720] [--ciudad guadalajara --cliente arca]` (elegir un PDV HH con nombre comercial, Rappi a 300 m y un clúster de 3-6 PDV
 para que no se encimen los números) → `cliente/laminas/` (cómo leer el mapa, la ficha del PDV, diccionario en 3) y `cliente/laminas/figuras/` (solo la
