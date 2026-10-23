@@ -65,22 +65,23 @@ Para replicarlo en otra ciudad usa la skill `/nse-tiendas-mx` (en `.claude/skill
    zipcode y hexágono"): mapa normal y mapa KO, Excel reducido y Excel KO. Normal: `Código postal (zipcode)` después de `pos_id` y
    `Clúster NSE (H3 res 9) · Hexágono (H3 res 8) · Hexágono (H3 res 7)` en el bloque del clúster (Excel y ficha del PDV del mapa);
    KO: hexágonos res 9/8/7 + código postal primero. Los 2 Excel solo con PDV con letras (y con share Whisp si hay Whisp).
-   **Actualizar desde una ruta** (usuario, 2026-10-23). El usuario manda la carpeta `cliente` con este prompt:
-   > Actualiza los 2 mapas y los 2 Excel (normal y KO) de esta carpeta con código postal y hexágonos, y quita las filas sin letras o sin Whisp:
+   **Flujo normal = E2E** (usuario, 2026-10-23: "el flujo normal sí debe ir e2e"): `src/correr.py --pasos ... 06 <ciudad>` rehace los
+   4 archivos (el 06 escribe el mapa y el reducido normales con código postal, hexágonos y filtro; la versión KO corre sola al final).
+   **Caso atípico: solo los archivos de la carpeta** (cuando el usuario solo tiene `cliente/` con `06_letras_nse_ventas_tradicional_*`,
+   `*_reducido_*`, `*_reducido_*_KO`, `06_mapa_qa_letras_*` y `*_KO.html`, sin datos crudos). Prompt del usuario:
+   > Caso atípico, solo con los archivos de esta carpeta: actualiza los 2 mapas y los 2 Excel (normal y KO) con código postal y
+   > hexágonos y quita las filas sin letras o sin Whisp:
    > `C:\Users\KIN\Desktop\Kin\mx-retail-geodemographics\outputs\{ciudad}\{bottler}\cliente`
-   > (si la ciudad no está configurada: estados `09,15`)
+   > (si los archivos no traen código postal: estados `09,15`)
 
-   Ciudad configurada (`merida`, `guadalajara`): `uv run python src/correr.py --pasos 06 <ciudad>` (rehace mapa y reducido normales con
-   código postal, hexágonos y filtro; al final corre solo la versión KO). Ciudad sin configurar (entregables de otra máquina): solo se
-   puede rehacer el KO con lo que hay en la carpeta:
-
-   Se corre `uv run python .claude/skills/golden-stores-kin/scripts/version_ko.py "<ruta>" [--estados 09,15]`: toma el mapa
-   `06_mapa_qa_letras_*.html` y el `*reducido*.xlsx` **normales** de esa carpeta y escribe al lado sus `_KO` (no toca los originales):
-   hexágonos res 9/8/7, código postal (si no lo traen, con el DENUE de la ciudad configurada o de `--estados`) y solo filas con valor
-   (con letras y, si hay Whisp, con share Whisp). Después: abrir el mapa KO en el navegador (sin errores, paso 5 = código postal) y
-   revisar que el Excel KO empiece con `Hexágono res 9 · res 8 · res 7 · Código postal (zipcode) · pos_id · Subcanal`, sin celdas vacías.
-   Si en la carpeta hay más de un mapa o reducido normal, se detiene y lo dice. Si se pide también el reducido normal limpio o con
-   código postal, eso lo hace el 06 (`src/correr.py --pasos 06 <ciudad>`; la versión KO corre sola al final).
+   Se corre `uv run python .claude/skills/golden-stores-kin/scripts/version_ko.py "<ruta>" [--estados 09,15]`. **No lee nada de `data/`**:
+   código postal del reducido o del Excel completo de la carpeta (por `pos_id`; DENUE de INEGI solo como último recurso con `--estados`),
+   hexágonos res 8/7 de la lat/lon de los archivos, KO con los datos que trae el mapa normal. Actualiza el mapa normal (código postal y
+   hexágonos en la ficha, plantilla vigente) y el reducido normal (columnas que falten + filtro), con respaldo en `cliente/anteriores/
+   *_<fecha>_antes_zip_hex.*`, y después escribe los 2 KO. Si ya estaban al día, los normales no se tocan. El Excel completo no se
+   modifica (solo se lee). Si hay más de un mapa o reducido normal en la carpeta, se detiene y lo dice. Verificar después: mapas en el
+   navegador sin errores (paso 5 = código postal en el KO; ficha del PDV con código postal y hexágonos en el normal) y los 2 Excel sin
+   celdas vacías con código postal y hexágonos. Probado 2026-10-23 con Mérida (sin cambios en normales) y con FEMSA CDMX en formato viejo.
 9. **QA contra Nielsen = todos los QA** (usuario, 2026-10-05: "no olvides sacar todo los qa"): una carpeta por ciudad en `qa/`
    (`Bepensa` = Mérida, `Guadalajara` = Arca) y `uv run python qa/correr_qa.py <ciudad>` (QA 1, QA 2 y base vs final). Incluye
    **Whisp** ("mira si mueve a favor": sin vs con Whisp en Letra 2, clúster y prioridad; **la 1.ª letra es NSE y Whisp no la mueve**)
