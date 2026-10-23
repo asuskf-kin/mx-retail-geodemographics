@@ -61,9 +61,18 @@ Para replicarlo en otra ciudad usa la skill `/nse-tiendas-mx` (en `.claude/skill
    la ZM del Valle de México es de 3 estados y `config.CIUDADES` es de uno solo → preguntar el alcance. **Al terminar la corrida se
    crean los dos artifacts** "Golden Stores · Tradicional · <BOTTLER> <Ciudad>" y "Letras por PDV · <BOTTLER> <Ciudad>" y se registran
    abajo. Pasos completos: sección "Bottler o ciudad nuevos" de la skill golden-stores-kin.
-8. **Actualizar mapa y Excel KO desde una ruta** (usuario, 2026-10-23). El usuario manda la carpeta `cliente` con este prompt:
-   > Actualiza el mapa y el Excel KO de esta carpeta: `C:\Users\KIN\Desktop\Kin\mx-retail-geodemographics\outputs\{ciudad}\{bottler}\cliente`
+8. **Los 4 archivos llevan código postal y hexágono** (usuario, 2026-10-23: "debes actualizar en los 2 mapas y los 2 exceles
+   zipcode y hexágono"): mapa normal y mapa KO, Excel reducido y Excel KO. Normal: `Código postal (zipcode)` después de `pos_id` y
+   `Clúster NSE (H3 res 9) · Hexágono (H3 res 8) · Hexágono (H3 res 7)` en el bloque del clúster (Excel y ficha del PDV del mapa);
+   KO: hexágonos res 9/8/7 + código postal primero. Los 2 Excel solo con PDV con letras (y con share Whisp si hay Whisp).
+   **Actualizar desde una ruta** (usuario, 2026-10-23). El usuario manda la carpeta `cliente` con este prompt:
+   > Actualiza los 2 mapas y los 2 Excel (normal y KO) de esta carpeta con código postal y hexágonos, y quita las filas sin letras o sin Whisp:
+   > `C:\Users\KIN\Desktop\Kin\mx-retail-geodemographics\outputs\{ciudad}\{bottler}\cliente`
    > (si la ciudad no está configurada: estados `09,15`)
+
+   Ciudad configurada (`merida`, `guadalajara`): `uv run python src/correr.py --pasos 06 <ciudad>` (rehace mapa y reducido normales con
+   código postal, hexágonos y filtro; al final corre solo la versión KO). Ciudad sin configurar (entregables de otra máquina): solo se
+   puede rehacer el KO con lo que hay en la carpeta:
 
    Se corre `uv run python .claude/skills/golden-stores-kin/scripts/version_ko.py "<ruta>" [--estados 09,15]`: toma el mapa
    `06_mapa_qa_letras_*.html` y el `*reducido*.xlsx` **normales** de esa carpeta y escribe al lado sus `_KO` (no toca los originales):

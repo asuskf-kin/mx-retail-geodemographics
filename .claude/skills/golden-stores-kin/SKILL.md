@@ -148,8 +148,10 @@ letras** y, si el archivo trae Whisp, con share Whisp (usuario, 2026-10-23); el 
 (`src/codigos_postales.py`: DENUE más cercano, ≤ 500 m, acierto LOO ≈ 91%). Guadalajara: 39,186 PDV; mapa 9,709 · 2,146 · 496
 hexágonos; letra del hexágono = la del PDV en 77% · 71% · 66%.
 
-**Actualizar desde una ruta (usuario, 2026-10-23):** si el usuario manda `outputs\{ciudad}\{bottler}\cliente` ("actualiza el mapa y
-el Excel KO de esta carpeta"), correr `uv run python .claude/skills/golden-stores-kin/scripts/version_ko.py "<ruta>" [--estados 09,15]`
+**Los 4 archivos llevan código postal y hexágono (usuario, 2026-10-23):** mapa normal y KO, Excel reducido y KO (normal: zipcode
+después de `pos_id` y hexágonos res 9/8/7 en el bloque del clúster; KO: res 9/8/7 + zipcode primero).
+**Actualizar desde una ruta (usuario, 2026-10-23):** si el usuario manda `outputs\{ciudad}\{bottler}\cliente`, en una ciudad
+configurada correr el 06 (`src/correr.py --pasos 06 <ciudad>`: rehace los 2 mapas y los 2 Excel); si no está configurada, correr `uv run python .claude/skills/golden-stores-kin/scripts/version_ko.py "<ruta>" [--estados 09,15]`
 (`--estados` solo si la ciudad no está en `config.CIUDADES` y el Excel no trae código postal). Busca ahí el mapa y el reducido normales
 y deja sus `_KO`; luego verificar el mapa en el navegador y las primeras columnas del Excel.
 

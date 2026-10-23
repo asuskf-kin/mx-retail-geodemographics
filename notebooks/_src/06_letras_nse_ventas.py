@@ -155,6 +155,10 @@ ids["segmento"] = ids.Subcanal                                            # subc
 DENUE_CP = CPS.denue_zm()
 _cpo = CPS.asignar(ids.Latitud, ids.Longitud, DENUE_CP)
 ids["codigo_postal"], ids["dist_cp_m"] = _cpo.codigo_postal.to_numpy(), _cpo.dist_m.to_numpy()
+# hexágonos H3 res 8 y res 7 que contienen al PDV (res 9 = su clúster NSE): van en los 2 mapas y los 2 Excel (usuario, 2026-10-23)
+for _r in (8, 7):
+    ids[f"hex{_r}"] = [h3.latlng_to_cell(la, lo, _r) if pd.notna(la) and pd.notna(lo) else "sin hexágono (sin coordenadas)"
+                       for la, lo in zip(ids.Latitud, ids.Longitud)]
 ACIERTO_CP = CPS.acierto_loo(DENUE_CP)
 print(f"Código postal (DENUE): {ids.codigo_postal.ne(CPS.SIN_CP).mean():.1%} de los PDV con código · {ids.codigo_postal.nunique():,} códigos · "
       f"distancia mediana al establecimiento DENUE {ids.dist_cp_m.median():.0f} m · acierto leave-one-out en el DENUE {ACIERTO_CP:.1%}")
@@ -1098,7 +1102,7 @@ ESC_NSE = {"tipo": "continua", "min": 1, "max": 6, "colores": MP.SECUENCIAL, "ba
 DIST_NSE3 = [["Bajo (D+ y D/E)", "p_bajo", MP.COLOR_NSE3["bajo"]], ["Medio (C y C−)", "p_medio", MP.COLOR_NSE3["medio"]],
              ["Alto (C+ y A/B)", "p_alto", MP.COLOR_NSE3["alto"]]]              # barra de distribución en los tooltips
 ESC_CENSO = {"tipo": "continua", "min": 0, "max": 100, "colores": MP.AZULES, "bajo": "0", "alto": "100"}
-POPUP = {"pdv": [("ID PDV", "id"), ("Código postal (zipcode)", "zip"), ("Nombre", "nombre"), ("Subcanal", "segmento"), ("Clúster NSE (H3 res 9)", "cl"), ("PDV del clúster NSE", "ncln"),
+POPUP = {"pdv": [("ID PDV", "id"), ("Código postal (zipcode)", "zip"), ("Nombre", "nombre"), ("Subcanal", "segmento"), ("Clúster NSE (H3 res 9)", "cl"), ("Hexágono (H3 res 8)", "h8"), ("Hexágono (H3 res 7)", "h7"), ("PDV del clúster NSE", "ncln"),
                  ("Distancia al centro del clúster (m)", "dcen"), ("Hogares del clúster (buffer de 300 m)", "hog"),
                  ("NSE del punto (hexágono res 10)", "N_punto"), ("NSE de su AGEB", "N_ageb"), ("Nivel NSE INEGI del clúster (1-6)", "Ni"),
                  ("NSE predominante (bajo / medio / alto)", "clase"), ("% ABC+ del clúster", "abc"), ("Índice Censo del clúster (0-100)", "censo"),
@@ -1259,7 +1263,7 @@ def ficha_pdv(g):
     """Columnas de la ficha del PDV en el mapa HTML (las mismas van al Excel reducido)."""
     return pd.DataFrame({
         "id": g.pos_id_cp.astype(str), "zip": g.codigo_postal, "nombre": g.Nombre.astype(str).str.replace("ABARRROTES", "ABARROTES"), "segmento": g.segmento,
-        "lat": g.Latitud.round(6), "lon": g.Longitud.round(6), "cl": g.cluster_nse, "ncln": g.n_cluster_nse, "dcen": g.dist_centro_m.round(0),
+        "lat": g.Latitud.round(6), "lon": g.Longitud.round(6), "cl": g.cluster_nse, "h8": g.hex8, "h7": g.hex7, "ncln": g.n_cluster_nse, "dcen": g.dist_centro_m.round(0),
         "hog": g.HH_cluster.round(0), "N_punto": g.N_punto.round(2), "N_ageb": g.N_ageb.round(2), "Ni": g.N_inegi.round(2), "clase": g.nse_clase,
         "pb": g.nse_bajo.round(0), "pm": g.nse_medio.round(0), "pa": g.nse_alto.round(0), "abc": g.abc.round(1), "censo": g.censo_area.round(0),
         "alt": g.alt_cluster.round(0), "N_alt": g.N_alt.round(2), "N": g.N.round(2), "I_N": g.I_N.round(0), "L1": g.L1, "L1s": g.L1_sin_alt,
@@ -1416,6 +1420,9 @@ def tabla_pdv(d):
     col(VEN, "Score sin Rappi", d.score_sin_rappi.round(3), f"({PESOS_L2['venta']}·r venta + {PESOS_L2['cp']}·r CP) / {PESOS_L2['venta'] + PESOS_L2['cp']}")
     col(VEN, "Score", d.score.round(3), f"({PESOS_L2['venta']}·r venta + {PESOS_L2['cp']}·r CP + {PESOS_L2['rappi']}·r Rappi) / {sum(PESOS_L2.values())}")
     col(CLU, "Clúster NSE (H3 res 9)", d.cluster_nse, "hexágono H3 que contiene al PDV: su centro es el punto NSE")
+    for _r, _a in ((8, "≈ 0.7 km²"), (7, "≈ 5.2 km²")):
+        if f"hex{_r}" in d.columns:
+            col(CLU, f"Hexágono (H3 res {_r})", d[f"hex{_r}"], f"hexágono H3 res {_r} ({_a}) que contiene al PDV (latitud y longitud del CP)")
     col(CLU, "PDV del clúster NSE", d.n_cluster_nse, "PDV Tradicional del mismo hexágono (comparten la Letra 1)")
     col(CLU, "Distancia al centro del clúster (m)", d.dist_centro_m.round(0), f"siempre ≤ {R300} m: el buffer lo contiene")
     col("Letra 1", "Nivel NSE final (INEGI + AltScore)", d.N.round(2), f"N* = {1 - LAM:g} · INEGI + {LAM:g} · AltScore (escala 1-6)")
@@ -1575,7 +1582,7 @@ RED_COLS = [(P_, "pos_id"), (P_, "Código postal (zipcode)"), (P_, "Nombre"), (P
             (VEN, "Rappi · pedidos/mes totales del buffer"), (VEN, "Rappi (pedidos/mes medios de sus tiendas)"),
             (VEN, "Rappi · venta del buffer (MXN/mes, referencia)"), (VEN, "Rango venta (0 = mejor)"), (VEN, "Rango CP"), (VEN, "Rango Rappi"),
             (VEN, "Score sin Rappi"), (VEN, "Score"),
-            (CLU, "Clúster NSE (H3 res 9)"), (CLU, "PDV del clúster NSE"), (CLU, "Distancia al centro del clúster (m)"),
+            (CLU, "Clúster NSE (H3 res 9)"), (CLU, "Hexágono (H3 res 8)"), (CLU, "Hexágono (H3 res 7)"), (CLU, "PDV del clúster NSE"), (CLU, "Distancia al centro del clúster (m)"),
             ("Letra 1", "Nivel NSE final (INEGI + AltScore)"), ("Letra 1", "Índice NSE (100 = media del subcanal)"),
             ("Letra 1", "Letra 1 sin AltScore"), ("Letra 1", "Letra 1 con AltScore (final)"),
             ("Letra 2", "Letra 2 sin Rappi"), ("Letra 2", "Letra 2 con Rappi (final)"),
@@ -1624,6 +1631,8 @@ DEFINICION = {
     "Score sin Rappi": "Score de la Letra 2 solo con venta y CP: (2·rango venta + 2·rango CP) / 4.",
     "Score": "Score final de la Letra 2: (2·rango venta + 2·rango CP + 1·rango Rappi) / 5. Menor es mejor.",
     "Clúster NSE (H3 res 9)": "Hexágono H3 res 9 (≈ 0.1 km²) que contiene al PDV; su centro es el punto NSE y todos sus PDV comparten la Letra 1.",
+    "Hexágono (H3 res 8)": "Hexágono H3 res 8 (≈ 0.7 km²) que contiene al PDV: agrupa más PDV que el clúster NSE (mismo id que el Excel y el mapa KO).",
+    "Hexágono (H3 res 7)": "Hexágono H3 res 7 (≈ 5.2 km²) que contiene al PDV: zona amplia (mismo id que el Excel y el mapa KO).",
     "PDV del clúster NSE": "PDV Tradicional que caen en el mismo hexágono (comparten su Letra 1).",
     "Distancia al centro del clúster (m)": "Distancia del PDV al centro de su hexágono, en metros (siempre dentro del buffer de 300 m).",
     "Nivel NSE final (INEGI + AltScore)": f"Nivel NSE que decide la Letra 1: {1 - LAM:g} · INEGI + {LAM:g} · AltScore (escala 1-6).",

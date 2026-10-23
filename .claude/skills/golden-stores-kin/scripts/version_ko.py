@@ -270,7 +270,7 @@ def excel_ko(src: Path, dst: Path):
     LAT, LON = col("Latitud"), col("Longitud")
     HEX = {r: (CLU[0], f"Hexágono (H3 res {r})") for r in RES}
     H = "Clasificación"
-    QUITAR = {"Nombre", "Latitud", "Longitud"}
+    QUITAR = {"Nombre", "Latitud", "Longitud", "Hexágono (H3 res 8)", "Hexágono (H3 res 7)"}   # los hexágonos se recalculan y van primero
     PRIMERO = ([col(ZIP)] if tiene(ZIP) else []) + [POS, SUB]          # zipcode junto a los hexágonos (usuario, 2026-10-22)
     RED = pd.DataFrame({HEX[r]: [hex_res(c9, la, lo, r) for c9, la, lo in zip(df[CLU], df[LAT], df[LON])] for r in RES})
     for c in PRIMERO + [c for c in cols if c[1] not in QUITAR and c != CLU and c not in PRIMERO]:
