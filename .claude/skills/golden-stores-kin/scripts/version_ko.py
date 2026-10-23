@@ -3,8 +3,9 @@
 Uso (desde la raíz del repo; lo corre solo src/correr.py al terminar bien el 06):
     uv run python .claude/skills/golden-stores-kin/scripts/version_ko.py <ciudad>
     uv run python .claude/skills/golden-stores-kin/scripts/version_ko.py <carpeta cliente> [--estados 09,15]
-        (p. ej. outputs/guadalajara/arca/cliente: busca ahí el mapa 06_mapa_qa_letras_*.html y el *reducido*.xlsx NORMALES y escribe
-        al lado sus _KO; usuario 2026-10-23: "te voy a mandar esta ruta para que actualices mapa y excel")
+        CASO ATÍPICO (usuario 2026-10-23; el flujo normal es E2E: correr el 06): solo con los archivos de esa carpeta, sin leer data/.
+        Código postal del reducido o del Excel completo de la carpeta (por pos_id; DENUE solo con --estados); actualiza el mapa y el
+        reducido NORMALES (código postal, hexágonos res 8/7, filtro; respaldo en anteriores/) y escribe sus _KO.
     uv run python .claude/skills/golden-stores-kin/scripts/version_ko.py --archivos <mapa.html> <reducido.xlsx> <mapa_KO.html> <reducido_KO.xlsx>
         [--estados 09,15]   (entregables sueltos con el mismo formato del 06, p. ej. FEMSA CDMX descargado; --estados = claves INEGI
         de las entidades: si el reducido o el mapa no traen código postal, se calcula con el DENUE de esas entidades)
@@ -48,7 +49,31 @@ import excel_kin as X       # noqa: E402
 import mapas as MP          # noqa: E402
 import codigos_postales as CPS   # noqa: E402
 
-DENUE_EXTRA = None          # --estados: DENUE para poner el código postal a entregables sueltos que no lo traen
+DENUE_EXTRA = None          # --estados: DENUE de INEGI, último recurso si los archivos no traen el código postal
+ZIP_ARCHIVOS = {}           # pos_id → código postal que ya traen los archivos de la carpeta (reducido o Excel completo)
+SIN_ZIP = "sin código postal (no viene en los archivos)"
+
+
+def zips(ids, lats, lons):
+    """Código postal de cada PDV: el de los archivos (por pos_id); si falta y hay --estados, el del DENUE más cercano."""
+    ids, lats, lons = list(ids), list(lats), list(lons)
+    out = [ZIP_ARCHIVOS.get(str(p)) for p in ids]
+    faltan = [i for i, v in enumerate(out) if v is None]
+    if faltan and DENUE_EXTRA is not None:
+        dz = CPS.asignar([lats[i] for i in faltan], [lons[i] for i in faltan], DENUE_EXTRA).codigo_postal.tolist()
+        for i, v in zip(faltan, dz):
+            out[i] = v
+    return [v if v is not None else SIN_ZIP for v in out]
+
+
+def leer_zip(xlsx: Path) -> dict:
+    """pos_id → código postal de un Excel del 06 (completo o reducido) que ya lo traiga; {} si no lo trae."""
+    ws = openpyxl.load_workbook(xlsx, read_only=True)["Letras por PDV"]
+    h = next(ws.iter_rows(min_row=5, max_row=5, values_only=True))
+    if "pos_id" not in h or "Código postal (zipcode)" not in h:
+        return {}
+    ip, iz = h.index("pos_id"), h.index("Código postal (zipcode)")
+    return {str(r[ip]): r[iz] for r in ws.iter_rows(min_row=7, values_only=True) if isinstance(r[iz], str) and r[iz].isdigit()}
 
 RES = [9, 8, 7]                                              # 9 = clúster NSE
 AREA = {9: "≈ 0.1 km²", 8: "≈ 0.7 km²", 7: "≈ 5.2 km²"}     # área media del hexágono H3
@@ -151,9 +176,9 @@ def mapa_ko(src: Path, dst: Path):
     b = t.index(";\ndocument.getElementById('t')", a)
     D = json.loads(t[a:b])
     P = D["datasets"]["pdv"]
-    if "zip" not in P["campos"] and DENUE_EXTRA is not None:     # mapa sin código postal (entregable suelto): se calcula
-        il, io = P["campos"].index("lat"), P["campos"].index("lon")
-        z = CPS.asignar([f[il] for f in P["filas"]], [f[io] for f in P["filas"]], DENUE_EXTRA).codigo_postal.tolist()
+    if "zip" not in P["campos"] and (ZIP_ARCHIVOS or DENUE_EXTRA is not None):   # mapa sin código postal: de los archivos
+        il, io, ii = P["campos"].index("lat"), P["campos"].index("lon"), P["campos"].index("id")
+        z = zips([f[ii] for f in P["filas"]], [f[il] for f in P["filas"]], [f[io] for f in P["filas"]])
         P["campos"].append("zip"); [f.append(v) for f, v in zip(P["filas"], z)]
     esc = {c["id"]: c.get("escala") for c in D["capas"]}
     dist_nse = next(c["distribucion"] for c in D["capas"] if c["id"] == "hex_N")
@@ -260,10 +285,10 @@ def excel_ko(src: Path, dst: Path):
     con_whisp = share.notna() if share is not None and share.notna().any() else pd.Series(True, index=df.index)
     fuera = (len(df), int((~con_letras).sum()), int((con_letras & ~con_whisp).sum()))
     df = df[con_letras & con_whisp].reset_index(drop=True)
-    zip_calc = not tiene(ZIP) and DENUE_EXTRA is not None             # entregable suelto sin código postal: se calcula
+    zip_calc = not tiene(ZIP) and (ZIP_ARCHIVOS or DENUE_EXTRA is not None)   # sin código postal: de los archivos (o --estados)
     if zip_calc:
         cz = (col("pos_id")[0], ZIP)
-        df[cz] = CPS.asignar(df[col("Latitud")], df[col("Longitud")], DENUE_EXTRA).codigo_postal.to_numpy()
+        df[cz] = zips(df[col("pos_id")], df[col("Latitud")], df[col("Longitud")])
         cols.append(cz); fuentes_.append(f"INEGI DENUE · cod_postal del establecimiento más cercano (≤ {CPS.RADIO_MAX_M} m)")
 
     CLU, POS, SUB = col("Clúster NSE (H3 res 9)"), col("pos_id"), col("Subcanal")
@@ -340,6 +365,123 @@ def excel_ko(src: Path, dst: Path):
           f" · código postal {'sí' if tiene(ZIP) else 'no (el reducido no lo trae)'} → {dst.name}")
 
 
+# ---------------------------------------------------------------- normales desde los archivos de la carpeta
+FMT_NORMAL = {**FMT, "Latitud": "0.000000", "Longitud": "0.000000"}
+POS_ZIP = ("Código postal (zipcode)", "zip")
+HEX_POPUP = [("Hexágono (H3 res 8)", "h8"), ("Hexágono (H3 res 7)", "h7")]
+F_ZIP = f"INEGI DENUE · cod_postal del establecimiento más cercano (≤ {CPS.RADIO_MAX_M} m)"
+
+
+def _respaldo(f: Path):
+    """Copia el archivo a cliente/anteriores/ con fecha antes de reescribirlo."""
+    import datetime as dt
+    import shutil
+    dst = f.parent / "anteriores" / f"{f.stem}_{dt.date.today():%Y-%m-%d}_antes_zip_hex{f.suffix}"
+    dst.parent.mkdir(exist_ok=True)
+    if not dst.exists():
+        shutil.copy2(f, dst)
+    return dst
+
+
+def mapa_normal(src: Path) -> bool:
+    """Agrega a la ficha del PDV del mapa normal el código postal y los hexágonos res 8 y 7 (de su lat/lon) si no los trae."""
+    t = src.read_text(encoding="utf-8")
+    a = t.index("const D = ") + len("const D = ")
+    b = t.index(";\ndocument.getElementById('t')", a)
+    D = json.loads(t[a:b])
+    P, cambia = D["datasets"]["pdv"], False
+    il, io = P["campos"].index("lat"), P["campos"].index("lon")
+    if "zip" not in P["campos"] and (ZIP_ARCHIVOS or DENUE_EXTRA is not None):
+        ii = P["campos"].index("id")
+        z = zips([f[ii] for f in P["filas"]], [f[il] for f in P["filas"]], [f[io] for f in P["filas"]])
+        P["campos"].append("zip"); [f.append(v) for f, v in zip(P["filas"], z)]; cambia = True
+    for r, k in ((8, "h8"), (7, "h7")):
+        if k not in P["campos"]:
+            P["campos"].append(k); [f.append(hex_res(None, f[il], f[io], r) or "sin hexágono (sin coordenadas)") for f in P["filas"]]; cambia = True
+    pop = D["popup"]["pdv"]
+    claves = [k for _, k in pop]
+    if "zip" in P["campos"] and "zip" not in claves:
+        pop.insert(claves.index("id") + 1 if "id" in claves else 0, list(POS_ZIP)); cambia = True
+    claves = [k for _, k in pop]
+    for e, k in reversed(HEX_POPUP):
+        if k not in claves:
+            pop.insert(claves.index("cl") + 1 if "cl" in claves else len(pop), [e, k]); cambia = True
+    if cambia:
+        _respaldo(src)
+        src.write_text(MP.pagina(D), encoding="utf-8")
+    print(f"[{CIUDAD}] mapa normal: {"ficha del PDV con código postal y hexágonos res 8/7" if cambia else "ya traía código postal y hexágonos"} → {src.name}")
+    return cambia
+
+
+def reducido_normal(src: Path) -> bool:
+    """Excel reducido normal: agrega código postal (después de pos_id) y hexágonos res 8/7 (después del clúster res 9) si no los trae
+    y quita las filas sin letras o, si hay Whisp, sin share Whisp. Misma plantilla; respaldo en anteriores/."""
+    wb0 = openpyxl.load_workbook(src)
+    ws = wb0["Letras por PDV"]
+    titulo, nota = ws.cell(1, 1).value, ws.cell(2, 1).value or ""
+    grupos, subs, fuentes_, g = [], [], [], None
+    for j in range(1, ws.max_column + 1):
+        g = ws.cell(4, j).value or g
+        grupos.append(g); subs.append(ws.cell(5, j).value); fuentes_.append(ws.cell(6, j).value)
+    cols = list(zip(grupos, subs))
+    df = pd.DataFrame(list(ws.iter_rows(min_row=7, values_only=True)), columns=pd.MultiIndex.from_tuples(cols))
+    col = lambda sub: next(c for c in cols if c[1] == sub)
+    tiene = lambda sub: any(c[1] == sub for c in cols)
+    fuentes = dict(zip(cols, fuentes_))
+    d0 = wb0["Diccionario"]
+    dic = pd.DataFrame(list(d0.iter_rows(min_row=5, values_only=True)), columns=[c.value for c in d0[4]])
+    nuevas_dic = {}
+    orden = list(cols)
+    POS, CLU = col("pos_id"), col("Clúster NSE (H3 res 9)")
+    if not tiene(ZIP) and (ZIP_ARCHIVOS or DENUE_EXTRA is not None):
+        cz = (POS[0], ZIP)
+        df[cz] = zips(df[POS], df[col("Latitud")], df[col("Longitud")])
+        orden.insert(orden.index(POS) + 1, cz); fuentes[cz] = F_ZIP
+        nuevas_dic[ZIP] = (POS, {"bloque": POS[0], "columna": ZIP, "definición": "Código postal (zipcode) del PDV: el del establecimiento "
+                                 f"DENUE de INEGI más cercano (≤ {CPS.RADIO_MAX_M} m).", "de dónde sale / fórmula": F_ZIP, "unidad o valores": "5 dígitos"})
+    previo = CLU
+    for r in (8, 7):
+        nom = f"Hexágono (H3 res {r})"
+        if not tiene(nom):
+            ch = (CLU[0], nom)
+            df[ch] = [hex_res(None, la, lo, r) or "sin hexágono (sin coordenadas)" for la, lo in zip(df[col("Latitud")], df[col("Longitud")])]
+            orden.insert(orden.index(previo) + 1, ch)
+            fuentes[ch] = f"hexágono H3 res {r} ({AREA[r]}) que contiene al PDV (latitud y longitud del CP)"
+            nuevas_dic[nom] = ((CLU[0], previo[1]), {"bloque": CLU[0], "columna": nom, "definición": f"Hexágono H3 res {r} ({AREA[r]}) que contiene "
+                               "al PDV (mismo id que el Excel y el mapa KO).", "de dónde sale / fórmula": fuentes[ch], "unidad o valores": "id H3"})
+            previo = ch
+        else:
+            previo = col(nom)
+    con_letras = df[col("Letras (final)")].isin(LET)
+    share = pd.to_numeric(df[col("Share KO Whisp (hexágono res 6)")], errors="coerce") if tiene("Share KO Whisp (hexágono res 6)") else None
+    con_whisp = share.notna() if share is not None and share.notna().any() else pd.Series(True, index=df.index)
+    quita = int((~(con_letras & con_whisp)).sum())
+    if not nuevas_dic and not quita:
+        print(f"[{CIUDAD}] Excel reducido normal: ya traía código postal y hexágonos y solo filas con letras → {src.name}")
+        return False
+    RED = df.loc[con_letras & con_whisp, orden].reset_index(drop=True)
+    RED.columns = pd.MultiIndex.from_tuples(orden)
+    filtro = "Solo PDV con letras (y con share Whisp si el área tiene Whisp; el Excel completo trae todos). "
+    _respaldo(src)
+    wb = X.libro()
+    X.hoja_tabla_2niveles(wb, "Letras por PDV", RED, titulo=titulo, nota=nota if nota.startswith("Solo PDV") else filtro + nota,
+                          formatos=FMT_NORMAL, anchos={"Nombre": 30, ZIP: 14}, colores_grupo=COLORES, fijar_cols=3 if tiene(ZIP) or ZIP in nuevas_dic else 2,
+                          fuentes=fuentes)
+    filas = [r for _, r in dic.iterrows()]
+    for nom, (despues, fila) in nuevas_dic.items():
+        i = next(k for k, r in enumerate(filas) if r["columna"] == despues[1]) + 1
+        filas.insert(i, pd.Series(fila))
+    dic = pd.DataFrame(filas).reset_index(drop=True)
+    dic["#"] = range(1, len(dic) + 1)
+    dic = dic[["#", "bloque", "columna", "definición", "de dónde sale / fórmula", "unidad o valores"]]
+    assert list(dic["columna"]) == [c[1] for c in RED.columns], "el Diccionario no sigue el orden de las columnas"
+    X.hoja_tabla(wb, "Diccionario", dic, titulo=d0.cell(1, 1).value, nota=d0.cell(2, 1).value, anchos=ANCHOS)
+    wb.save(src)
+    print(f"[{CIUDAD}] Excel reducido normal: {len(df):,} → {len(RED):,} PDV (fuera {quita:,} sin letras o sin share Whisp) · "
+          f"agregadas {list(nuevas_dic) or 'ninguna'} → {src.name}")
+    return True
+
+
 if __name__ == "__main__":
     if sys.argv[1:2] == ["--archivos"]:
         m, r, m_ko, r_ko = map(Path, sys.argv[2:6])
@@ -356,12 +498,17 @@ if __name__ == "__main__":
         if len(mapas_) != 1 or len(reds) != 1:
             sys.exit(f"[{CIUDAD}] en {CARPETA} debe haber 1 mapa y 1 Excel reducido normales (no _KO); hay mapas {[p.name for p in mapas_]} "
                      f"y reducidos {[p.name for p in reds]}")
+        # SOLO los archivos de la carpeta (usuario, 2026-10-23): código postal del reducido o del Excel completo (por pos_id);
+        # el DENUE de INEGI solo si ninguno lo trae y se pasa --estados. Hexágonos de la lat/lon de los archivos.
+        completos = normal(p for p in CARPETA.glob("06_letras_nse_ventas_tradicional_*.xlsx") if "reducido" not in p.name)
+        for f in [reds[0], *completos]:
+            ZIP_ARCHIVOS.update({k: v for k, v in leer_zip(f).items() if k not in ZIP_ARCHIVOS})
         if "--estados" in sys.argv:
             DENUE_EXTRA = CPS.denue_estados(sys.argv[sys.argv.index("--estados") + 1].split(","))
-        elif CONFIGURADA:            # ciudad configurada: su DENUE (solo se usa si el mapa o el Excel no traen código postal)
-            DENUE_EXTRA = CPS.denue_zm()
-        else:
-            print(f"[{CIUDAD}] ciudad sin configurar y sin --estados: si el Excel no trae código postal, el KO sale sin él")
+        print(f"[{CIUDAD}] código postal en los archivos: {len(ZIP_ARCHIVOS):,} PDV" +
+              ("" if ZIP_ARCHIVOS or DENUE_EXTRA is not None else " → los archivos no lo traen: pasar --estados para sacarlo del DENUE"))
+        mapa_normal(mapas_[0])
+        reducido_normal(reds[0])
         mapa_ko(mapas_[0], mapas_[0].with_name(mapas_[0].stem + "_KO.html"))
         excel_ko(reds[0], reds[0].with_name(reds[0].stem + "_KO.xlsx"))
         sys.exit()
