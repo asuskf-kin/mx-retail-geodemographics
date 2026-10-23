@@ -62,26 +62,68 @@ Para replicarlo en otra ciudad usa la skill `/nse-tiendas-mx` (en `.claude/skill
    crean los dos artifacts** "Golden Stores · Tradicional · <BOTTLER> <Ciudad>" y "Letras por PDV · <BOTTLER> <Ciudad>" y se registran
    abajo. Pasos completos: sección "Bottler o ciudad nuevos" de la skill golden-stores-kin.
 8. **Los 4 archivos llevan código postal y hexágono** (usuario, 2026-10-23: "debes actualizar en los 2 mapas y los 2 exceles
-   zipcode y hexágono"): mapa normal y mapa KO, Excel reducido y Excel KO. Normal: `Código postal (zipcode)` después de `pos_id` y
-   `Clúster NSE (H3 res 9) · Hexágono (H3 res 8) · Hexágono (H3 res 7)` en el bloque del clúster (Excel y ficha del PDV del mapa);
-   KO: hexágonos res 9/8/7 + código postal primero. Los 2 Excel solo con PDV con letras (y con share Whisp si hay Whisp).
+   zipcode y hexágono"): mapa normal (del bottler) y mapa KO, Excel reducido (del bottler) y Excel KO.
+   - **Los 2 Excel empiezan igual** (usuario, 2026-10-23, "sí respetas"): `Hexágono (H3 res 9) · Hexágono (H3 res 8) · Hexágono (H3 res 7) ·
+     Código postal (zipcode) · pos_id`; el del bottler sigue con `Nombre · Subcanal · Latitud · Longitud · …` (5 columnas fijas) y el KO con
+     `Subcanal · …`. Res 9 = clúster NSE (en el Excel completo se sigue llamando `Clúster NSE (H3 res 9)`). Solo PDV con letras (y con
+     share Whisp si hay Whisp).
+   - **Los 2 mapas tienen código postal y hexágonos** y su **último paso es "Toma de decisiones"** (usuario, 2026-10-23): el del
+     bottler conserva sus pasos con puntos y agrega "5. Toma de decisiones"; el KO tiene los pasos 1.1-1.5 por hexágono y "3. Toma de
+     decisiones". En ese último paso (y solo ahí) aparece **dentro del mapa** la tarjeta flotante **"Resultados · elige qué ver"**
+     (arriba a la derecha) con **solo los resultados de cada proceso** (usuario: "la lista me confunde… solo los resultados de cada
+     proceso, no cada capa" · "agrega el zip también"), combinables (p. ej. zip + Whisp + letras + Rappi, o solo Rappi y zip):
+     **Código postal** (hexágono con el que predomina + número al acercarse; prendido por defecto) · **Letras** (bottler: cada PDV con
+     su letra; KO: la que predomina en el hexágono) · **Rappi** (tiendas, tamaño = pedidos/mes; en los 2 mapas: en el KO desde el
+     2026-10-23, "en KO puedes agregar rappi": son tiendas de la plataforma, no PDV del bottler; el KO sigue sin datos de PDV) · **Whisp** (contorno
+     verde/rojo si se combina con otro resultado de hexágonos; solo, relleno y clicable con su ficha). Definidas en `D["opciones"]`
+     (`capas` por grupo, `solo`, `relleno`, `defecto`); la resolución res 9/8/7 aplica. Prioridad no está en la lista (no la pidió).
+     **Leyenda clicable** (usuario: "quiero ver todo pero solo share [alto], letra HH y tiendas activas… así el usuario va moldeando
+     sus necesidades"): clic en un valor de la leyenda lo oculta o lo muestra (tachado = oculto) en cualquier capa con valores (letras,
+     prioridad, Rappi activa/esporádica, Whisp alto/bajo…), en los 2 mapas y en todos los pasos; se conserva al cambiar resolución o
+     resultados y se limpia al cambiar de paso (`ocultos`/`claveFiltro` en `src/mapas.py`; misma clave para res 9/8/7 y para el
+     contorno y el relleno de Whisp). Probado en Guadalajara: HH 3,669 PDV · Rappi activas 259 · Whisp alto 33 hexágonos.
+     **Búsqueda de un código postal = filtro** (usuario: "quita todo lo que no pertenece a ese código postal… si no hay algo en esa
+     región para qué me lo muestras"): se quedan solo los hexágonos con ese código (res 7-9), los PDV con ese código, los puntos sin
+     código (Rappi) dentro de su zona (sus hexágonos res 9), los hexágonos res 10 dentro de la zona y los Whisp res 6 que la contienen;
+     aviso amarillo "Solo CP 44350 · quitar ✕" (panel y mapa; Esc en el buscador también lo quita); sin anillos de resaltado. La
+     **leyenda solo lista los valores que hay en lo que se ve, con cuántos** ("nada en esta vista" si no hay), siempre, no solo con el
+     filtro (`ponerZip`, `fueraDeZona`, `puntoFuera`, `conteos` en `src/mapas.py`). Guadalajara, CP 44350 en el bottler: 9 hexágonos,
+     125 PDV (HH 5 · HL 64 · LH 7 · LL 49), 4 Rappi (3 activas), 1 Whisp (bajo).
+     Ya no hay chips "Ver" en ese paso.
+     **Whisp** como contorno encima (verde alto, rojo bajo; no tapa ni roba el clic) o relleno y clicable con ficha (share, PDV por
+     letra y prioridad, lo que predomina y el código postal). **Código postal legible:** el número se escribe dentro de cada hexágono al
+     acercarse (zoom ≥ 14 res 9 · 12 res 8 · 11 res 7), tooltip "Res 9 · Código postal: 45690", el punto del PDV dice "· CP …"; sin DENUE a
+     500 m la ficha dice el motivo. Ficha del hexágono al clic; búsqueda por código postal (marca sus PDV o hexágonos) o id de hexágono.
+     Botón del panel en pantallas angostas: "Ocultar panel ◂ / Mostrar panel ▸". Lo arman `version_ko.py` (`mapa_normal`, `mapa_ko`,
+     `capas_hex`, `enriquecer_whisp`) y la plantilla de `src/mapas.py` (`b-capas`/`listaCapas`, `vistas`, `solo_borde`,
+     `etiqueta_campo`/`etiqueta_zoom`, `grupo`/`etiqueta_capa`) después del 06 (E2E) y en el caso atípico: mismo código en los dos.
    **Flujo normal = E2E** (usuario, 2026-10-23: "el flujo normal sí debe ir e2e"): `src/correr.py --pasos ... 06 <ciudad>` rehace los
    4 archivos (el 06 escribe el mapa y el reducido normales con código postal, hexágonos y filtro; la versión KO corre sola al final).
    **Caso atípico: solo los archivos de la carpeta** (cuando el usuario solo tiene `cliente/` con `06_letras_nse_ventas_tradicional_*`,
    `*_reducido_*`, `*_reducido_*_KO`, `06_mapa_qa_letras_*` y `*_KO.html`, sin datos crudos). Prompt del usuario:
-   > Caso atípico, solo con los archivos de esta carpeta: actualiza los 2 mapas y los 2 Excel (normal y KO) con código postal y
-   > hexágonos y quita las filas sin letras o sin Whisp:
+   > Caso atípico, solo con los archivos de esta carpeta: actualiza los 2 mapas (bottler y KO) y los 2 Excel (bottler y KO) con
+   > código postal y hexágonos res 9/8/7, quita las filas sin letras o sin Whisp y deja los mapas con "Toma de decisiones":
    > `C:\Users\KIN\Desktop\Kin\mx-retail-geodemographics\outputs\{ciudad}\{bottler}\cliente`
    > (si los archivos no traen código postal: estados `09,15`)
 
    Se corre `uv run python .claude/skills/golden-stores-kin/scripts/version_ko.py "<ruta>" [--estados 09,15]`. **No lee nada de `data/`**:
    código postal del reducido o del Excel completo de la carpeta (por `pos_id`; DENUE de INEGI solo como último recurso con `--estados`),
-   hexágonos res 8/7 de la lat/lon de los archivos, KO con los datos que trae el mapa normal. Actualiza el mapa normal (código postal y
-   hexágonos en la ficha, plantilla vigente) y el reducido normal (columnas que falten + filtro), con respaldo en `cliente/anteriores/
-   *_<fecha>_antes_zip_hex.*`, y después escribe los 2 KO. Si ya estaban al día, los normales no se tocan. El Excel completo no se
-   modifica (solo se lee). Si hay más de un mapa o reducido normal en la carpeta, se detiene y lo dice. Verificar después: mapas en el
-   navegador sin errores (paso 5 = código postal en el KO; ficha del PDV con código postal y hexágonos en el normal) y los 2 Excel sin
-   celdas vacías con código postal y hexágonos. Probado 2026-10-23 con Mérida (sin cambios en normales) y con FEMSA CDMX en formato viejo.
+   hexágonos res 8/7 de la lat/lon de los archivos, KO con los datos que trae el mapa normal. Hace, en este orden:
+   1. **Mapa del bottler** (`mapa_normal`, se reescribe siempre con la plantilla vigente): ficha del PDV con código postal y hexágonos
+      res 9/8/7 y último paso **"5. Toma de decisiones"** (tarjeta "Resultados · elige qué ver": Código postal · Letras · Rappi · Whisp,
+      chips res 9/8/7, ficha del hexágono, número del código postal al acercarse, leyenda clicable que solo lista lo que hay, búsqueda de
+      código postal que deja solo ese código).
+   2. **Excel reducido del bottler** (`reducido_normal`): empieza con `Hexágono res 9 · res 8 · res 7 · Código postal (zipcode) · pos_id ·
+      Nombre · Subcanal · Latitud · Longitud`, solo filas con letras (y con share Whisp si hay Whisp), misma plantilla. Si ya estaba así,
+      no se toca.
+   3. **Mapa KO** (`mapa_ko`): sin PDV, pasos 1.1-1.5 por hexágono y **"3. Toma de decisiones"** (Código postal · Letras · Rappi · Whisp).
+   4. **Excel KO** (`excel_ko`): `Hexágono res 9 · res 8 · res 7 · Código postal (zipcode) · pos_id · Subcanal · …`, sin Nombre ni
+      coordenadas, con Letras · Acción · Prioridad del hexágono por resolución.
+   Antes de reescribir un normal se guarda copia en `cliente/anteriores/*_<fecha>_antes_zip_hex.*` (una por día). El Excel completo no se
+   modifica (solo se lee). Si hay más de un mapa o reducido normal en la carpeta, se detiene y lo dice. Verificar después: los 2 mapas
+   en el navegador sin errores (último paso "Toma de decisiones" con su tarjeta de resultados; buscar un código postal deja solo ese
+   código; ficha del PDV con código postal y hexágonos en el del bottler) y los 2 Excel sin celdas vacías, empezando con hexágonos y
+   código postal. Probado 2026-10-23 con Mérida, Guadalajara y una copia de FEMSA CDMX en formato viejo (con `--estados 09,15`).
 9. **QA contra Nielsen = todos los QA** (usuario, 2026-10-05: "no olvides sacar todo los qa"): una carpeta por ciudad en `qa/`
    (`Bepensa` = Mérida, `Guadalajara` = Arca) y `uv run python qa/correr_qa.py <ciudad>` (QA 1, QA 2 y base vs final). Incluye
    **Whisp** ("mira si mueve a favor": sin vs con Whisp en Letra 2, clúster y prioridad; **la 1.ª letra es NSE y Whisp no la mueve**)
@@ -426,8 +468,8 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
     res 8 · res 7 que aplican a TODOS los pasos** (usuario: "no se comunica con todos los datos"): NSE de los hogares (suma/media
     ponderada por hogares de los hexágonos res 10), Censo, clúster NSE (res 8/7 = media de sus clústeres ponderada por PDV), AltScore,
     nivel final, letras y prioridad que **predominan** entre sus PDV (empate → la mejor) y share Whisp del res 6. Clic en un hexágono →
-    ficha con todos sus datos (con su código postal); **último paso "5. Código postal (zipcode)"** (color por el código que
-    predomina entre sus PDV; usuario 2026-10-22: "el último déjalo para que lo vean con zip code"); búsqueda por id del hexágono o
+    ficha con todos sus datos (con su código postal); **último paso "3. Toma de decisiones"** (tarjeta "Resultados · elige qué ver" dentro
+    del mapa: Código postal · Letras · Rappi · Whisp; usuario 2026-10-22/23); búsqueda por id del hexágono o
     por código postal (marca todos sus hexágonos; cambia sola de resolución). Lo arma `mapas.pagina()` con la plantilla
     vigente (`resoluciones`, `ficha` y `buscar_placeholder` en `src/mapas.py`). Guadalajara: 9,709 · 2,146 · 496 hexágonos; 2.1 MB.
   - `cliente/06_letras_nse_ventas_tradicional_reducido_<cliente>_<zm>_KO.xlsx`: **misma plantilla** del reducido; una fila por PDV;
@@ -437,7 +479,8 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
 - **Código postal (zipcode) del PDV (usuario, 2026-10-22):** el CP del cliente no lo trae → `src/codigos_postales.py` le asigna el
   `cod_postal` del establecimiento **DENUE** más cercano de la ZM (≤ 500 m; si no, "sin código postal (sin DENUE a 500 m)"). Lo
   escribe el 06 en el Excel completo y en el reducido (`Código postal (zipcode)` **justo después de `pos_id`**: "debe estar en las primeras
-  columnas"; reducido = 44 columnas, 3 fijas), en la ficha del PDV del mapa (campo `zip`) y pasa al KO. Guadalajara: 98.4% de los PDV con código, 511 códigos, distancia mediana 12 m; acierto leave-one-out en el DENUE 90.8%
+  columnas"; desde el 2026-10-23 el reducido empieza con `Hexágono res 9 · res 8 · res 7 · Código postal (zipcode) · pos_id`, 5 fijas),
+  en la ficha del PDV del mapa (campo `zip`) y pasa al KO. Guadalajara: 98.4% de los PDV con código, 511 códigos, distancia mediana 12 m; acierto leave-one-out en el DENUE 90.8%
   (con 5 vecinos 90%, con 10 88%: por eso el más cercano). Mérida aún no se corre con este cambio.
 - **Láminas del mapa (2026-10-02):** `uv run python .claude/skills/golden-stores-kin/scripts/laminas_mapa.py [--pos 2720]` captura el
   mapa con Chrome sin interfaz (los números los dibuja el propio mapa; sin fondo de calles porque no hay WebGL) y arma 5 PNG con marca

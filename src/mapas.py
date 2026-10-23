@@ -144,11 +144,11 @@ h1{font-family:var(--ka-font-display);font-weight:var(--ka-weight-bold);font-siz
 .sub{color:var(--ka-color-gray-2);font-size:var(--ka-size-caption);line-height:1.4}
 #cuerpo{flex:1;overflow-y:auto;padding:var(--esp-4)}
 .bloque{margin-bottom:var(--esp-4)}.bloque>.eyebrow{display:block;margin-bottom:var(--esp-2)}
-#filtro,#resol{display:flex;flex-wrap:wrap;gap:var(--esp-2)}
-#filtro label,#resol label{display:inline-flex;align-items:center;gap:var(--esp-1);padding:var(--esp-1) var(--esp-3);border:1px solid var(--ka-color-border);border-radius:var(--ka-radius-pill);
+#filtro,#resol,#vista{display:flex;flex-wrap:wrap;gap:var(--esp-2)}
+#filtro label,#resol label,#vista label{display:inline-flex;align-items:center;gap:var(--esp-1);padding:var(--esp-1) var(--esp-3);border:1px solid var(--ka-color-border);border-radius:var(--ka-radius-pill);
  font-size:var(--ka-size-caption);cursor:pointer;user-select:none;background:var(--ka-color-surface)}
-#filtro label.on,#resol label.on{background:var(--ka-color-black);color:var(--ka-color-white);border-color:var(--ka-color-black)}
-#filtro input,#resol input{display:none}#filtro .n,#resol .n{color:var(--ka-color-gray-3)}
+#filtro label.on,#resol label.on,#vista label.on{background:var(--ka-color-black);color:var(--ka-color-white);border-color:var(--ka-color-black)}
+#filtro input,#resol input,#vista input{display:none}#filtro .n,#resol .n,#vista .n{color:var(--ka-color-gray-3)}
 #buscar{width:100%;padding:var(--esp-2) var(--esp-3);border:1px solid var(--ka-color-border);border-radius:var(--ka-radius-box);font:inherit;font-size:var(--ka-size-caption)}
 #buscar:focus{outline:2px solid var(--ka-color-black);outline-offset:1px}
 #res{margin-top:var(--esp-1)}#res div{padding:var(--esp-2) var(--esp-3);cursor:pointer;font-size:var(--ka-size-caption);border-radius:var(--ka-radius-base)}
@@ -171,11 +171,16 @@ h1{font-family:var(--ka-font-display);font-weight:var(--ka-weight-bold);font-siz
 .nota{color:var(--ka-color-gray-3);font-size:var(--ka-size-overline);line-height:1.45}
 .ka-site{display:block;margin-top:var(--esp-2)}
 #mapa-wrap{flex:1;position:relative}#mapa{position:absolute;inset:0}
+#b-capas{position:absolute;right:var(--esp-4);top:var(--esp-3);z-index:600;width:17rem;max-height:52%;overflow-y:auto;background:var(--ka-color-surface);border:1px solid var(--ka-color-border);border-radius:var(--ka-radius-box);box-shadow:0 6px 18px rgba(20,20,23,.14);padding:var(--esp-2) var(--esp-3)}
 #leyenda{position:absolute;right:var(--esp-4);bottom:2rem;z-index:500;max-width:16rem;max-height:45%;overflow-y:auto;background:var(--ka-color-surface);
  border-radius:var(--ka-radius-box);padding:var(--esp-3) var(--esp-4);font-size:var(--ka-size-caption);box-shadow:0 1px 4px rgba(20,20,23,.18)}
 #leyenda:empty{display:none}#leyenda b{font-family:var(--ka-font-display);font-weight:var(--ka-weight-medium)}
+.zip-on{background:var(--ka-color-yellow);color:#141417;border-radius:var(--ka-radius-pill);padding:var(--esp-1) var(--esp-3);font-size:var(--ka-size-caption);font-weight:var(--ka-weight-semibold);margin-top:var(--esp-2);display:inline-block}
+.zip-on button{border:0;background:transparent;font:inherit;cursor:pointer;text-decoration:underline;margin-left:var(--esp-2)}
+#chip-zip{position:absolute;left:50%;transform:translateX(-50%);top:var(--esp-3);z-index:650;margin:0;box-shadow:0 2px 8px rgba(20,20,23,.2)}
 #ayuda{position:absolute;left:3.25rem;top:var(--esp-3);z-index:500;background:var(--ka-color-black);color:var(--ka-color-white);border-radius:var(--ka-radius-pill);
  padding:var(--esp-1) var(--esp-3);font-size:var(--ka-size-overline);pointer-events:none}
+#leyenda .it{cursor:pointer;user-select:none}#leyenda .it .n{color:var(--ka-color-gray-3)}#leyenda .it:hover{text-decoration:underline}#leyenda .it.off{opacity:.4;text-decoration:line-through}
 .sw{display:inline-block;width:.7rem;height:.7rem;border-radius:50%;margin:0 var(--esp-1) -1px 0;border:1px solid var(--ka-color-white);box-shadow:0 0 0 1px var(--ka-color-gray-2)}
 .grad{height:.6rem;border-radius:var(--ka-radius-base);margin:var(--esp-1) 0}.lab{display:flex;justify-content:space-between;color:var(--ka-color-gray-3);font-size:var(--ka-size-overline)}
 .dist{display:flex;height:.6rem;width:100%;min-width:13rem;border-radius:var(--ka-radius-base);overflow:hidden;margin:var(--esp-1) 0;background:var(--ka-color-gray-1)}.dist span{display:block;height:100%}
@@ -184,6 +189,12 @@ h1{font-family:var(--ka-font-display);font-weight:var(--ka-weight-bold);font-siz
 .leaflet-popup-content-wrapper{border-radius:var(--ka-radius-box)}.leaflet-popup-content{margin:var(--esp-3) var(--esp-4);font-size:var(--ka-size-caption)}
 .ficha-cab{font-family:var(--ka-font-display);font-weight:var(--ka-weight-bold);font-size:var(--ka-size-body);line-height:1.2}
 .ficha-id{color:var(--ka-color-gray-3);font-size:var(--ka-size-overline);margin-bottom:var(--esp-2)}
+.etq span{display:inline-block;transform:translate(-50%,-50%);font:600 11px var(--ka-font-body);color:#141417;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff;pointer-events:none}
+#b-capas summary{cursor:pointer;list-style:none}#b-capas summary::-webkit-details-marker{display:none}
+#b-capas summary::after{content:' ▾'}#b-capas details[open] summary::after{content:' ▴'}
+#lista-capas{display:flex;flex-direction:column;gap:2px;margin-top:var(--esp-2)}
+#lista-capas label{display:flex;gap:var(--esp-2);align-items:flex-start;font-size:var(--ka-size-caption);cursor:pointer;padding:2px 0}
+#lista-capas input{margin-top:2px;accent-color:#141417}
 .ficha-sec{font-weight:var(--ka-weight-semibold);padding-top:var(--esp-2)!important;color:var(--ka-color-black)}
 .chips{display:flex;flex-wrap:wrap;gap:var(--esp-1);margin:var(--esp-1) 0 var(--esp-2)}
 .chip{display:inline-block;padding:.1rem var(--esp-2);border-radius:var(--ka-radius-pill);font-size:var(--ka-size-overline);font-weight:var(--ka-weight-semibold);
@@ -196,14 +207,15 @@ hr.sep{border:0;border-top:1px solid var(--ka-color-gray-1);margin:var(--esp-2) 
 @media (max-width:760px){#app{flex-direction:column}#panel{width:100%;max-height:55%;border-right:0;border-bottom:1px solid var(--ka-color-border)}
  #panel.cerrado #cuerpo,#panel.cerrado #pie{display:none}
  #plegar{display:inline-block;float:right;border:1px solid var(--ka-color-gray-3);background:transparent;color:var(--ka-color-white);border-radius:var(--ka-radius-pill);padding:0 var(--esp-2);font:inherit;font-size:var(--ka-size-overline)}
- #leyenda{max-width:12rem}#ayuda{display:none}}
+ #leyenda{max-width:12rem}#ayuda{display:none}#b-capas{width:13rem;max-height:40%}}
 </style></head><body><div id="app"><aside id="panel">
-<header id="cabeza"><button id="plegar" type="button">ocultar</button><img class="logo" src="__LOGO__" alt="Kin">
+<header id="cabeza"><button id="plegar" type="button">Ocultar panel ◂</button><img class="logo" src="__LOGO__" alt="Kin">
 <div class="eyebrow">Mapa interactivo</div><h1 id="t"></h1><div class="sub" id="s"></div></header>
 <div id="cuerpo">
+<div class="bloque" id="b-vista" style="display:none"><span class="eyebrow" id="vista-tit"></span><div id="vista"></div></div>
 <div class="bloque" id="b-res"><span class="eyebrow" id="res-tit"></span><div id="resol"></div></div>
 <div class="bloque" id="b-filtro"><span class="eyebrow" id="filtro-tit"></span><div id="filtro"></div></div>
-<div class="bloque"><span class="eyebrow">Buscar</span><input id="buscar" placeholder="ID o nombre del PDV · Enter abre el primero" autocomplete="off"><div id="res"></div></div>
+<div class="bloque"><span class="eyebrow">Buscar</span><input id="buscar" placeholder="ID o nombre del PDV · Enter abre el primero" autocomplete="off"><div id="filtro-zip" class="zip-on" style="display:none"></div><div id="res"></div></div>
 <div class="bloque"><span class="eyebrow">Pasos</span><div class="pasos" id="pasos"></div>
 <div id="nav"><button id="ant" type="button">← anterior</button><span id="pos"></span><button id="sig" type="button">siguiente →</button></div></div>
 <div class="bloque"><div id="texto"></div></div>
@@ -211,7 +223,7 @@ hr.sep{border:0;border-top:1px solid var(--ka-color-gray-1);margin:var(--esp-2) 
 <footer id="pie"><div class="nota">Clic en un PDV o en un hexágono: se dibujan su clúster NSE, su buffer de 300 m y su ficha. Teclas ← → cambian de paso.
 Fondo OpenFreeMap (datos © colaboradores de OpenStreetMap), sin API key: funciona abriendo el archivo con doble clic.</div>
 <span class="ka-site">kinanalytics.com</span></footer>
-</aside><div id="mapa-wrap"><div id="mapa"></div><div id="leyenda"></div><div id="ayuda">Clic en un punto o hexágono para ver su ficha</div></div></div>
+</aside><div id="mapa-wrap"><div id="mapa"></div><div id="b-capas" style="display:none"><details open><summary class="eyebrow">Resultados · elige qué ver</summary><div id="lista-capas"></div></details></div><div id="leyenda"></div><div id="ayuda">Clic en un punto o hexágono para ver su ficha</div><div id="chip-zip" class="zip-on" style="display:none"></div></div></div>
 <script>
 const D = __DATOS__;
 document.getElementById('t').textContent = D.titulo; document.getElementById('s').textContent = D.subtitulo;
@@ -237,20 +249,42 @@ function pasa(r, filtro) { return !filtro || r[filtro[0]] === filtro[1]; }
 const F = D.filtro, activos = new Set(F ? F.valores : []);         // filtro del panel (p. ej. subcanal)
 const visible = (ds, r) => !F || ds !== F.dataset || activos.has(r[F.campo]);
 let pasoActual = 0;
+const ocultos = {};                       // clic en un valor de la leyenda: lo oculta o lo muestra (usuario, 2026-10-23)
+const claveFiltro = c => c.campo + '|' + (c.dataset || String(c.fuente || 'hex').replace(/^r\d+$/, 'r'));
+let zipFiltro = null, zona = null, zonaPadres = {};   // búsqueda de un código postal: solo se ve ese código (usuario, 2026-10-23)
+function fueraDeZona(h, vals, campos) {   // hexágono fuera del código buscado
+  if (zipFiltro === null) return false;
+  const r = h3.getResolution(h), jz = campos.indexOf('zip');
+  if (jz >= 0 && r >= 7) return vals[jz] !== zipFiltro;                        // hexágonos con código postal: el mismo código
+  if (r > 9) return !zona.has(h3.cellToParent(h, 9));                          // hexágonos finos (res 10): dentro de la zona
+  return !(zonaPadres[r] || (zonaPadres[r] = new Set([...zona].map(c => h3.cellToParent(c, r))))).has(h);   // res 6 (Whisp): los que la contienen
+}
+function puntoFuera(r) {
+  if (zipFiltro === null) return false;
+  if (r.zip !== undefined) return r.zip !== zipFiltro;                         // PDV: su código postal
+  return !zona.has(h3.latLngToCell(r.lat, r.lon, 9));                          // Rappi y otros puntos: solo dentro de la zona
+}
+const oculto = (c, v) => !!(ocultos[claveFiltro(c)] && ocultos[claveFiltro(c)].has(String(v)));
 const RS = D.resoluciones || null;        // selector de resolución H3: capas con "res" se ven solo en la resolución elegida
 let resActual = RS ? RS.defecto : null;
-const enRes = c => !RS || c.res === undefined || c.res === resActual;
+const VS = D.vistas || null;              // "Ver": un paso con varias capas (p. ej. código postal · letras · prioridad), una a la vez
+let vistaActual = VS ? VS.defecto : null;
+const enRes = c => (!RS || c.res === undefined || c.res === resActual) && (!VS || c.vista === undefined || c.vista === vistaActual);
+const conteos = {};                       // capa → {valor: cuántos se dibujan} (la leyenda solo muestra lo que hay en la vista)
 function construir(c) {
   const g = L.layerGroup();
+  const cnt = conteos[c.id] = {};
   if (c.tipo === 'hex') {
     const H = D.hex[c.fuente || 'hex'], j = H.campos.indexOf(c.campo);
     const jd = (c.distribucion || []).map(([e, k, col]) => [e, H.campos.indexOf(k), col]);
     const je = (c.extra || []).map(([e, k]) => [e, H.campos.indexOf(k)]);
     const K = D.cluster, porId = c.seleccion && K ? Object.fromEntries(DS[c.seleccion].map(r => [r[K.campo], r])) : null;
     for (const [h, vals] of Object.entries(H.filas)) {
-      const v = vals[j]; if (v === null) continue;
-      const pol = L.polygon(h3.cellToBoundary(h), {renderer: lienzo, stroke: !!c.borde, color: '#ffffff', weight: c.borde ? 1 : 0,
-        fillColor: color(v, c.escala), fillOpacity: c.opacidad || 0.6})
+      const v = vals[j]; if (v === null || fueraDeZona(h, vals, H.campos)) continue;
+      cnt[v] = (cnt[v] || 0) + 1; if (oculto(c, v)) continue;
+      const pol = L.polygon(h3.cellToBoundary(h), c.solo_borde ?        // contorno encima de otras capas, sin tapar ni robar el clic
+        {renderer: lienzo, color: color(v, c.escala), weight: c.grosor || 3, fill: false, interactive: false} :
+        {renderer: lienzo, stroke: !!c.borde, color: '#ffffff', weight: c.borde ? 1 : 0, fillColor: color(v, c.escala), fillOpacity: c.opacidad || 0.6})
         .bindTooltip(() => (c.res !== undefined ? '<span class="nota">H3 res ' + c.res + ' · ' + h + '</span><br>' : '') + '<b>' + c.nombre + ': ' + fmt(v) + '</b>' + je.map(([e, jj]) => '<br>' + e + ': <b>' + fmt(vals[jj]) + '</b>').join('') +
           barra(jd.map(([e, jj, col]) => [e, vals[jj], col])), {sticky: true});
       if (porId && porId[h]) pol.on('click', () => seleccionar(c.seleccion, porId[h]));
@@ -263,10 +297,11 @@ function construir(c) {
       barra((c.distribucion || []).map(([e, k, col]) => [e, f.properties[k], col])), {sticky: true})}).addTo(g);
   } else if (c.tipo === 'puntos') {
     for (const r of DS[c.dataset]) {
-      if (!pasa(r, c.filtro) || !visible(c.dataset, r)) continue;
+      if (!pasa(r, c.filtro) || !visible(c.dataset, r) || puntoFuera(r)) continue;
+      cnt[r[c.campo]] = (cnt[r[c.campo]] || 0) + 1; if (oculto(c, r[c.campo])) continue;
       const rad = c.tamano ? Math.max(3, Math.min(18, Math.sqrt(Math.max(r[c.tamano] || 0, 0)) * (c.escala_tamano || 0.5))) : (c.radio_px || 4);
       L.circleMarker([r.lat, r.lon], {renderer: lienzo, radius: rad, color: '#ffffff', weight: 0.7, fillColor: color(r[c.campo], c.escala) || '#c3c2b7', fillOpacity: 0.9})
-        .bindTooltip(() => esc(r.nombre || r.id || ''), {direction: 'top'})
+        .bindTooltip(() => esc(r.nombre || r.id || '') + (c.campo === 'zip' && r.zip ? ' · CP ' + esc(r.zip) : ''), {direction: 'top'})
         .on('click', () => seleccionar(c.dataset, r)).addTo(g);
     }
   } else if (c.tipo === 'contorno') {
@@ -347,31 +382,104 @@ function fichaHex(c, h, vals, H) {   // capa hex con "ficha" = [[etiqueta, campo
   L.popup({maxWidth: 400, minWidth: 280, autoPanPaddingTopLeft: [16, 48], autoPanPaddingBottomRight: [300, 32]})
     .setLatLng(h3.cellToLatLng(h)).setContent(t).openOn(mapa);
 }
+const etq = L.layerGroup().addTo(mapa);   // etiquetas fijas (p. ej. el código postal) dentro de los hexágonos visibles al acercarse
+function etiquetas() {
+  etq.clearLayers();
+  const p = D.pasos[pasoActual]; if (!p) return;
+  const b = mapa.getBounds();
+  for (const id of visibles) {
+    const c = capaPor[id];
+    if (!c.etiqueta_campo || mapa.getZoom() < (c.etiqueta_zoom || 14)) continue;
+    const H = D.hex[c.fuente], j = H.campos.indexOf(c.etiqueta_campo); let n = 0;
+    for (const [h, vals] of Object.entries(H.filas)) {
+      const v = vals[j]; if (v === null || v === undefined) continue;
+      const ll = h3.cellToLatLng(h); if (!b.contains(ll)) continue;
+      L.marker(ll, {interactive: false, keyboard: false, icon: L.divIcon({className: 'etq', html: '<span>' + esc(v) + '</span>', iconSize: null})}).addTo(etq);
+      if (++n >= 800) break;
+    }
+  }
+}
+mapa.on('moveend', etiquetas);
 function leyenda(ids) {
   let h = '';
   for (const id of ids) {
     const c = capaPor[id]; if (!c.escala) continue;
     h += '<div style="margin-top:.4rem"><b>' + c.nombre + '</b><br>';
     if (c.escala.leyenda) h += '<span class="nota">' + c.escala.leyenda + '</span>';
-    else if (c.escala.tipo === 'categorica') h += Object.entries(c.escala.colores).map(([k, v]) => '<span class="sw" style="background:' + v + '"></span>' + (c.escala.etiquetas && c.escala.etiquetas[k] || k)).join('<br>');
+    else if (c.escala.tipo === 'categorica') {                   // solo los valores que hay en lo que se ve, con cuántos
+      const n = conteos[id] || {}, hay = Object.entries(c.escala.colores).filter(([k]) => n[k]);
+      h += hay.length ? hay.map(([k, v]) => '<span class="it' + (oculto(c, k) ? ' off' : '') + '" data-capa="' + esc(id) + '" data-v="' + esc(k) +
+        '" title="clic: mostrar u ocultar"><span class="sw" style="background:' + v + '"></span>' + (c.escala.etiquetas && c.escala.etiquetas[k] || k) +
+        ' <span class="n">' + n[k].toLocaleString('es-MX') + '</span></span>').join('<br>') : '<span class="nota">nada en esta vista</span>';
+    }
     else h += '<div class="grad" style="background:linear-gradient(90deg,' + c.escala.colores.join(',') + ')"></div><div class="lab"><span>' + (c.escala.bajo || fmt(c.escala.min)) + '</span><span>' + (c.escala.alto || fmt(c.escala.max)) + '</span></div>';
     h += '</div>';
   }
-  document.getElementById('leyenda').innerHTML = h ? '<span class="eyebrow">Leyenda</span>' + h : '';
+  const ley = document.getElementById('leyenda');
+  ley.innerHTML = h ? '<span class="eyebrow">Leyenda · clic en un valor para mostrarlo u ocultarlo</span>' + h : '';
+  ley.querySelectorAll('.it').forEach(el => el.onclick = () => {
+    const c = capaPor[el.dataset.capa], k = claveFiltro(c), s = ocultos[k] = ocultos[k] || new Set();
+    s.has(el.dataset.v) ? s.delete(el.dataset.v) : s.add(el.dataset.v);
+    for (const id in capas) if (claveFiltro(capaPor[id]) === k) { mapa.removeLayer(capas[id]); delete capas[id]; }   // se redibujan sin esos valores
+    sel.clearLayers(); mapa.closePopup(); activar(pasoActual, true);
+  });
 }
-function activar(i) {
+let ajustes = {}, visibles = [];        // grupo de capa → true/false puesto por el usuario · capas que se ven ahora
+const grupoDe = c => c.grupo || c.id;
+const nombreCapa = c => c.etiqueta_capa || String(c.nombre).replace(/^Res \d+ · /, '');
+const GRUPOS = [...new Map(D.capas.filter(c => !c.siempre).map(c => [grupoDe(c), c])).values()];
+const rango = c => c.tipo === 'poligonos' ? 0 : c.tipo === 'hex' ? (c.solo_borde ? 2 : 1) : c.tipo === 'circulos' ? 3 : 4;   // puntos arriba
+function capaDeGrupo(g) { const cs = D.capas.filter(c => grupoDe(c) === g); return (cs.find(c => c.res === undefined || c.res === resActual) || cs[0]).id; }
+const OP = D.opciones || null;           // resultados de cada proceso (código postal, letras, Rappi, Whisp): lo que se elige en la última vista
+let opOn = new Set(OP ? OP.filter(o => o.defecto).map(o => o.valor) : []);
+function capasOpciones() {               // "solo": la versión que se usa cuando ningún otro resultado pinta hexágonos (p. ej. Whisp relleno y clicable)
+  const ons = OP.filter(o => opOn.has(o.valor)), ids = [];
+  for (const o of ons) ids.push(...((o.solo && !ons.some(x => x !== o && x.relleno)) ? o.solo : o.capas).map(capaDeGrupo));
+  return ids;
+}
+function listaCapas() {
+  if (OP) {
+    const box = document.getElementById('lista-capas');
+    box.innerHTML = OP.map(o => '<label><input type="checkbox" value="' + esc(o.valor) + '"' + (opOn.has(o.valor) ? ' checked' : '') + '><span><b>' +
+      esc(o.etiqueta) + '</b>' + (o.nota ? '<br><span class="nota">' + esc(o.nota) + '</span>' : '') + '</span></label>').join('');
+    box.querySelectorAll('input').forEach(inp => inp.onchange = () => { inp.checked ? opOn.add(inp.value) : opOn.delete(inp.value); activar(pasoActual, true); });
+    return;
+  }
+  const on = new Set(visibles.map(id => grupoDe(capaPor[id]))), box = document.getElementById('lista-capas');
+  const prim = [...new Set(D.pasos[pasoActual].capas.map(id => grupoDe(capaPor[id])))];      // primero las de esta vista, luego las demás
+  const fila = c => '<label><input type="checkbox" value="' + esc(grupoDe(c)) + '"' + (on.has(grupoDe(c)) ? ' checked' : '') + '><span>' + esc(nombreCapa(c)) + '</span></label>';
+  const a = prim.map(g => GRUPOS.find(c => grupoDe(c) === g)).filter(Boolean), b = GRUPOS.filter(c => !prim.includes(grupoDe(c)));
+  box.innerHTML = a.map(fila).join('') + (b.length ? '<div class="nota" style="margin-top:var(--esp-2)">Más capas (de los otros pasos)</div>' + b.map(fila).join('') : '');
+  box.querySelectorAll('input').forEach(inp => inp.onchange = () => { ajustes[inp.value] = inp.checked; activar(pasoActual, true); });
+}
+function activar(i, conservar) {
   i = Math.max(0, Math.min(D.pasos.length - 1, i));
   const p = D.pasos[i];
+  const libre = i === D.pasos.length - 1;   // solo el último paso deja prender o apagar cualquier capa (usuario, 2026-10-23)
+  if (!conservar || !libre) ajustes = {};
+  if (!conservar && Object.keys(ocultos).length) {          // otro paso: se vuelven a ver todos los valores
+    for (const k in ocultos) delete ocultos[k];
+    for (const id in capas) { mapa.removeLayer(capas[id]); delete capas[id]; }
+  }
   pasoActual = i;
+  document.getElementById('b-capas').style.display = libre ? '' : 'none';
   document.querySelectorAll('.pasos button').forEach((b, j) => b.classList.toggle('on', j === i));
   for (const id in capas) mapa.removeLayer(capas[id]);
-  const vis = p.capas.filter(id => enRes(capaPor[id]));
+  const base = p.capas.filter(id => enRes(capaPor[id])), gb = new Set(base.map(id => grupoDe(capaPor[id])));
+  let vis = base.filter(id => ajustes[grupoDe(capaPor[id])] !== false);
+  for (const [g, on] of Object.entries(ajustes)) if (on && !gb.has(g)) vis.push(capaDeGrupo(g));
+  if (libre && OP) vis = capasOpciones();
+  vis = vis.map((id, k) => [id, k]).sort((a, b) => rango(capaPor[a[0]]) - rango(capaPor[b[0]]) || a[1] - b[1]).map(x => x[0]);
+  visibles = vis;
+  if (VS) document.getElementById('b-vista').style.display = !libre && p.capas.some(id => capaPor[id].vista !== undefined) ? '' : 'none';   // en la última vista mandan las casillas
   for (const id of vis) { if (!capas[id]) capas[id] = construir(capaPor[id]); capas[id].addTo(mapa); }
   document.getElementById('texto').innerHTML = '<h3>' + p.titulo + '</h3><p><b>Qué se hace:</b> ' + p.que + '</p><p><b>Por qué:</b> ' + p.porque + '</p>' +
     (p.formula ? '<div class="f">' + p.formula + '</div>' : '') + (p.cifras ? '<p>' + p.cifras + '</p>' : '');
   document.getElementById('pos').textContent = 'Paso ' + (i + 1) + ' de ' + D.pasos.length;
   document.getElementById('ant').disabled = i === 0; document.getElementById('sig').disabled = i === D.pasos.length - 1;
   leyenda(vis);
+  etiquetas();
+  listaCapas();
 }
 D.capas.filter(c => c.siempre).forEach(c => construir(c).addTo(mapa));      // contexto fijo (p. ej. límite municipal)
 D.pasos.forEach((p, i) => {
@@ -394,7 +502,7 @@ if (F) {
     inp.checked ? activos.add(inp.value) : activos.delete(inp.value);
     inp.parentElement.classList.toggle('on', inp.checked);
     for (const id in capas) if (capaPor[id].dataset === F.dataset) { mapa.removeLayer(capas[id]); delete capas[id]; }   // se redibujan con el filtro
-    sel.clearLayers(); mapa.closePopup(); activar(pasoActual);
+    sel.clearLayers(); mapa.closePopup(); activar(pasoActual, true);
   });
 } else document.getElementById('b-filtro').style.display = 'none';
 if (RS) {
@@ -404,9 +512,19 @@ if (RS) {
     (o.valor === resActual ? ' checked' : '') + '>' + esc(o.etiqueta) + (o.n !== undefined ? ' <span class="n">' + o.n.toLocaleString('es-MX') + '</span>' : '') + '</label>').join('');
   box.querySelectorAll('input').forEach(inp => inp.onchange = () => {
     resActual = +inp.value; box.querySelectorAll('label').forEach(l => l.classList.toggle('on', l.firstChild.checked));
-    sel.clearLayers(); mapa.closePopup(); activar(pasoActual);
+    sel.clearLayers(); mapa.closePopup(); activar(pasoActual, true);
   });
 } else document.getElementById('b-res').style.display = 'none';
+function marcarVista(v) {
+  vistaActual = v; document.querySelectorAll('#vista input').forEach(i => { i.checked = i.value === v; i.parentElement.classList.toggle('on', i.checked); });
+}
+if (VS) {
+  document.getElementById('vista-tit').textContent = VS.etiqueta;
+  const box = document.getElementById('vista');
+  box.innerHTML = VS.valores.map(o => '<label' + (o.valor === vistaActual ? ' class="on"' : '') + '><input type="radio" name="vista" value="' + o.valor + '"' +
+    (o.valor === vistaActual ? ' checked' : '') + '>' + esc(o.etiqueta) + '</label>').join('');
+  box.querySelectorAll('input').forEach(inp => inp.onchange = () => { marcarVista(inp.value); sel.clearLayers(); mapa.closePopup(); activar(pasoActual, true); });
+}
 if (D.buscar_placeholder) document.getElementById('buscar').placeholder = D.buscar_placeholder;
 const HEXR = D.capas.filter(c => c.tipo === 'hex' && c.res !== undefined);       // hexágonos buscables por id (una fuente por resolución)
 function buscarHex(q) {
@@ -425,27 +543,55 @@ function buscarHex(q) {
 function irHex(o) {
   if (RS && o.res !== resActual) { resActual = o.res; document.querySelectorAll('#resol input').forEach(i => { i.checked = +i.value === o.res; i.parentElement.classList.toggle('on', i.checked); }); }
   const quiere = id => capaPor[id].res === o.res && (!o.hexes || capaPor[id].buscar_campo);   // por valor → el paso de ese campo
-  if (o.hexes) activar(D.pasos.findIndex(p => p.capas.some(quiere)));
+  if (o.hexes) ponerZip(o.valor);
+  if (o.hexes) { const c = D.capas.find(c => quiere(c.id)); if (c && c.vista !== undefined) marcarVista(c.vista); activar(D.pasos.findIndex(p => p.capas.some(quiere))); }
   else if (!D.pasos[pasoActual].capas.some(id => capaPor[id].res === o.res)) activar(D.pasos.findIndex(p => p.capas.some(id => capaPor[id].res === o.res))); else activar(pasoActual);
   sel.clearLayers();
   const todos = [];
   for (const hx of (o.hexes || [o.hex])) { const b = h3.cellToBoundary(hx); todos.push(...b);
+    if (o.hexes) continue;                  // código postal: el filtro ya deja solo esos hexágonos; un id: se marca
     L.polygon(b, {renderer: lienzo, color: '#141417', weight: 4, fill: false, interactive: false}).addTo(sel);
     L.polygon(b, {renderer: lienzo, color: '#e5ff01', weight: 2.5, fill: false, interactive: false}).addTo(sel); }
-  mapa.fitBounds(L.latLngBounds(todos), {maxZoom: 16, padding: [40, 40]});
+  mapa.fitBounds(L.latLngBounds(todos), {maxZoom: o.hexes ? 15 : 16, padding: [60, 60]});
+}
+function buscarZip(q) {                // PDV por código postal: un resultado por código con todos sus PDV
+  if (!/^\d{2,5}$/.test(q) || !(DS.pdv || []).length || DS.pdv[0].zip === undefined) return [];
+  const por = {};
+  for (const r of DS.pdv) if (visible('pdv', r) && String(r.zip).startsWith(q)) (por[r.zip] = por[r.zip] || []).push(r);
+  return Object.keys(por).sort().slice(0, 4).map(v => ({zipval: v, pdvs: por[v]}));
+}
+function ponerZip(z) {                    // filtra todo el mapa a un código postal (null = quitar)
+  zipFiltro = z; zonaPadres = {};
+  if (z !== null) {
+    zona = new Set();
+    if (D.hex.r9) { const jz = D.hex.r9.campos.indexOf('zip'); for (const h in D.hex.r9.filas) if (D.hex.r9.filas[h][jz] === z) zona.add(h); }
+    for (const r of (DS.pdv || [])) if (r.zip === z) zona.add(h3.latLngToCell(r.lat, r.lon, 9));
+    if (OP && OP.some(o => o.valor === 'zip')) opOn.add('zip');
+  }
+  for (const id in capas) { mapa.removeLayer(capas[id]); delete capas[id]; }
+  const txt = z === null ? '' : 'Solo CP ' + esc(z) + ' <button type="button" class="quitar-zip">quitar ✕</button>';
+  for (const id of ['filtro-zip', 'chip-zip']) { const el = document.getElementById(id); el.innerHTML = txt; el.style.display = z === null ? 'none' : ''; }
+  document.querySelectorAll('.quitar-zip').forEach(b => b.onclick = () => { ponerZip(null); sel.clearLayers(); activar(pasoActual, true); });
+}
+function irZip(o) {
+  ponerZip(o.zipval);
+  const i = D.pasos.findIndex(p => p.capas.some(id => capaPor[id].campo === 'zip' && capaPor[id].tipo === 'puntos'));
+  if (i >= 0) { const c = D.capas.find(c => c.campo === 'zip' && c.tipo === 'puntos'); if (c && c.vista !== undefined) marcarVista(c.vista); activar(i); }
+  sel.clearLayers(); mapa.closePopup();
+  mapa.fitBounds(L.latLngBounds(o.pdvs.map(p => [p.lat, p.lon])), {maxZoom: 15, padding: [60, 60]});   // el filtro ya deja solo ese código
 }
 let hallados = [];
-const ir = r => (r.hex || r.hexes) ? irHex(r) : (mapa.setView([r.lat, r.lon], 17), seleccionar('pdv', r));
+const ir = r => r.pdvs ? irZip(r) : (r.hex || r.hexes) ? irHex(r) : (mapa.setView([r.lat, r.lon], 17), seleccionar('pdv', r));
 const buscar = document.getElementById('buscar'), res = document.getElementById('res');
 buscar.addEventListener('input', e => {
   const q = e.target.value.trim().toLowerCase(); res.innerHTML = ''; hallados = [];
   if (q.length < 2) return;
-  hallados = (DS.pdv || []).filter(r => visible('pdv', r) && (String(r.id).includes(q) || String(r.nombre).toLowerCase().includes(q))).slice(0, 8);
+  hallados = [...buscarZip(q), ...(DS.pdv || []).filter(r => visible('pdv', r) && (String(r.id).includes(q) || String(r.nombre).toLowerCase().includes(q)))].slice(0, 8);
   if (!hallados.length && HEXR.length) hallados = buscarHex(q);
   if (!hallados.length) { res.innerHTML = '<div class="vacio">Sin resultados con el filtro actual</div>'; return; }
   hallados.forEach((r, k) => {
     const d = document.createElement('div');
-    d.textContent = r.hexes ? r.campo + ' ' + r.valor + ' · ' + r.hexes.length + ' hexágonos res ' + r.res : r.hex ? 'H3 res ' + r.res + ' · ' + r.hex + (r.etiqueta ? ' · ' + r.etiqueta : '') :
+    d.textContent = r.pdvs ? 'CP ' + r.zipval + ' · ' + r.pdvs.length + ' PDV' : r.hexes ? r.campo + ' ' + r.valor + ' · ' + r.hexes.length + ' hexágonos res ' + r.res : r.hex ? 'H3 res ' + r.res + ' · ' + r.hex + (r.etiqueta ? ' · ' + r.etiqueta : '') :
       r.id + ' · ' + r.nombre + (r.letras ? ' · ' + r.letras : '') + (r.prioridad ? ' · ' + r.prioridad : '');
     if (k === 0) d.className = 'on';
     d.onclick = () => ir(r); res.appendChild(d);
@@ -453,10 +599,10 @@ buscar.addEventListener('input', e => {
 });
 buscar.addEventListener('keydown', e => {
   if (e.key === 'Enter' && hallados.length) ir(hallados[0]);
-  if (e.key === 'Escape') { buscar.value = ''; res.innerHTML = ''; hallados = []; }
+  if (e.key === 'Escape') { buscar.value = ''; res.innerHTML = ''; hallados = []; if (zipFiltro !== null) { ponerZip(null); sel.clearLayers(); activar(pasoActual, true); } }
 });
 document.getElementById('plegar').onclick = e => {
-  const p = document.getElementById('panel'); p.classList.toggle('cerrado'); e.target.textContent = p.classList.contains('cerrado') ? 'mostrar' : 'ocultar';
+  const p = document.getElementById('panel'); p.classList.toggle('cerrado'); e.target.textContent = p.classList.contains('cerrado') ? 'Mostrar panel ▸' : 'Ocultar panel ◂';
   setTimeout(() => mapa.invalidateSize(), 50);
 };
 activar(0);

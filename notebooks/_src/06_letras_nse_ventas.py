@@ -1573,7 +1573,9 @@ print(f"Entregable final: {XLSX_FINAL.name} ({len(FINAL):,} PDV Tradicional) · 
 # PDV" (bloques de color, 2 niveles de encabezado y 3.ª fila con la fuente) y, al final, Letras base (INEGI + CP) · Letras (final) ·
 # Acción Golden Stores · Prioridad. Lleva su hoja Diccionario; el diccionario va también en un Excel aparte.
 P_ = "Punto de venta (CP)"
-RED_COLS = [(P_, "pos_id"), (P_, "Código postal (zipcode)"), (P_, "Nombre"), (P_, "Subcanal"), (P_, "Latitud"), (P_, "Longitud"),
+# primero hexágonos y código postal, igual que el KO (usuario, 2026-10-23); el res 9 (clúster NSE) se llama "Hexágono (H3 res 9)"
+RED_COLS = [(CLU, "Clúster NSE (H3 res 9)"), (CLU, "Hexágono (H3 res 8)"), (CLU, "Hexágono (H3 res 7)"), (P_, "Código postal (zipcode)"),
+            (P_, "pos_id"), (P_, "Nombre"), (P_, "Subcanal"), (P_, "Latitud"), (P_, "Longitud"),
             (ALT_BLOQUE, "Índice NSE AltScore del clúster (0-100)"), (ALT_BLOQUE, "NSE AltScore en escala 1-6"),
             (GOB, "Hogares del clúster (buffer de 300 m)"), (GOB, "Nivel NSE INEGI del clúster (media, 1 = D/E … 6 = A/B)"),
             (GOB, "NSE predominante del clúster"), (GOB, "NSE del punto (hexágono res 10)"), (GOB, "NSE de su AGEB"), (GOB, "% ABC+ del clúster"),
@@ -1582,7 +1584,7 @@ RED_COLS = [(P_, "pos_id"), (P_, "Código postal (zipcode)"), (P_, "Nombre"), (P
             (VEN, "Rappi · pedidos/mes totales del buffer"), (VEN, "Rappi (pedidos/mes medios de sus tiendas)"),
             (VEN, "Rappi · venta del buffer (MXN/mes, referencia)"), (VEN, "Rango venta (0 = mejor)"), (VEN, "Rango CP"), (VEN, "Rango Rappi"),
             (VEN, "Score sin Rappi"), (VEN, "Score"),
-            (CLU, "Clúster NSE (H3 res 9)"), (CLU, "Hexágono (H3 res 8)"), (CLU, "Hexágono (H3 res 7)"), (CLU, "PDV del clúster NSE"), (CLU, "Distancia al centro del clúster (m)"),
+            (CLU, "PDV del clúster NSE"), (CLU, "Distancia al centro del clúster (m)"),
             ("Letra 1", "Nivel NSE final (INEGI + AltScore)"), ("Letra 1", "Índice NSE (100 = media del subcanal)"),
             ("Letra 1", "Letra 1 sin AltScore"), ("Letra 1", "Letra 1 con AltScore (final)"),
             ("Letra 2", "Letra 2 sin Rappi"), ("Letra 2", "Letra 2 con Rappi (final)"),
@@ -1600,6 +1602,10 @@ _con_whisp = _share.notna() if _share.notna().any() else pd.Series(True, index=R
 print(f"Excel reducido: fuera {(~_con_letras).sum():,} PDV sin letras y {(_con_letras & ~_con_whisp).sum():,} sin share Whisp "
       f"({'el área tiene Whisp' if _share.notna().any() else 'sin Whisp en el área: solo sin letras'}); quedan {(_con_letras & _con_whisp).sum():,}")
 RED = RED[_con_letras & _con_whisp]
+HEX9 = (CLU, "Hexágono (H3 res 9)")
+RED_COLS = [HEX9 if c_ == (CLU, "Clúster NSE (H3 res 9)") else c_ for c_ in RED_COLS]
+RED.columns = pd.MultiIndex.from_tuples(RED_COLS)
+ORIGEN[HEX9] = ORIGEN[(CLU, "Clúster NSE (H3 res 9)")]
 DEFINICION = {
     "pos_id": f"Identificador del punto de venta en el CP de {C.CLIENTE_NOMBRE}.",
     "Nombre": "Nombre del punto de venta.",
@@ -1631,6 +1637,7 @@ DEFINICION = {
     "Score sin Rappi": "Score de la Letra 2 solo con venta y CP: (2·rango venta + 2·rango CP) / 4.",
     "Score": "Score final de la Letra 2: (2·rango venta + 2·rango CP + 1·rango Rappi) / 5. Menor es mejor.",
     "Clúster NSE (H3 res 9)": "Hexágono H3 res 9 (≈ 0.1 km²) que contiene al PDV; su centro es el punto NSE y todos sus PDV comparten la Letra 1.",
+    "Hexágono (H3 res 9)": "Hexágono H3 res 9 (≈ 0.1 km²) del clúster NSE que contiene al PDV; su centro es el punto NSE y todos sus PDV comparten la Letra 1.",
     "Hexágono (H3 res 8)": "Hexágono H3 res 8 (≈ 0.7 km²) que contiene al PDV: agrupa más PDV que el clúster NSE (mismo id que el Excel y el mapa KO).",
     "Hexágono (H3 res 7)": "Hexágono H3 res 7 (≈ 5.2 km²) que contiene al PDV: zona amplia (mismo id que el Excel y el mapa KO).",
     "PDV del clúster NSE": "PDV Tradicional que caen en el mismo hexágono (comparten su Letra 1).",
@@ -1661,7 +1668,7 @@ wb_r = X.libro()
 X.hoja_tabla_2niveles(wb_r, "Letras por PDV", RED, titulo="Letras por punto de venta · canal Tradicional (reducido)",
                       nota="Solo PDV con letras (y con share Whisp si el área tiene Whisp; el Excel completo trae todos). Columnas de la ficha del PDV en el mapa · al final Letras base (INEGI + CP), Letras (final), Acción Golden Stores y Prioridad. "
                            "La 3.ª fila dice de dónde sale cada columna; la hoja Diccionario define cada una.",
-                      formatos=FMT, anchos={"Nombre": 30, "Código postal (zipcode)": 14}, colores_grupo=COLORES, fijar_cols=3,
+                      formatos=FMT, anchos={"Nombre": 30, "Código postal (zipcode)": 14}, colores_grupo=COLORES, fijar_cols=5,
                       fuentes={k: v for k, v in ORIGEN.items() if k in set(RED.columns)})
 X.hoja_tabla(wb_r, "Diccionario", DICC, titulo="Diccionario de datos · Letras por PDV (reducido)",
              nota="Una fila por columna de la hoja Letras por PDV, en el mismo orden.",

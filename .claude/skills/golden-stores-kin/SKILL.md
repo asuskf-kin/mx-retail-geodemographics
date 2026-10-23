@@ -141,15 +141,16 @@ terminar bien el 06, `uv run python .claude/skills/golden-stores-kin/scripts/ver
 el reducido NORMALES; con `--estados` calcula el código postal si no lo traen). Escribe en `cliente/`, junto a los originales (sin tocarlos):
 `06_mapa_qa_letras_<cliente>_<zm>_KO.html` (sin puntos; chips res 9 = clúster NSE · res 8 · res 7 que cambian **todos** los pasos:
 NSE de los hogares, Censo, clúster NSE, AltScore, nivel final, letras y prioridad que **predominan**; clic en un hexágono = ficha con
-todos sus datos; último paso "5. Código postal (zipcode)"; búsqueda por id o por código postal) y `cliente/06_letras_nse_ventas_tradicional_reducido_<cliente>_<zm>_KO.xlsx` (**misma plantilla**
+todos sus datos; último paso "3. Toma de decisiones" con la tarjeta "Resultados · elige qué ver" dentro del mapa (solo resultados, combinables: Código postal · Letras · Rappi · Whisp; número del código postal al acercarse); búsqueda por id o por código postal) y `cliente/06_letras_nse_ventas_tradicional_reducido_<cliente>_<zm>_KO.xlsx` (**misma plantilla**
 del reducido; una fila por PDV; `Hexágono res 9 · res 8 · res 7 · Código postal (zipcode) · pos_id · Subcanal` y el resto igual; sin
 `Nombre`, `Latitud`, `Longitud`; al final Letras · Acción · Prioridad del hexágono por resolución). Los dos Excel (reducido y KO) **solo llevan PDV con
 letras** y, si el archivo trae Whisp, con share Whisp (usuario, 2026-10-23); el Excel completo y el mapa conservan todos. El código postal lo pone el 06
 (`src/codigos_postales.py`: DENUE más cercano, ≤ 500 m, acierto LOO ≈ 91%). Guadalajara: 39,186 PDV; mapa 9,709 · 2,146 · 496
 hexágonos; letra del hexágono = la del PDV en 77% · 71% · 66%.
 
-**Los 4 archivos llevan código postal y hexágono (usuario, 2026-10-23):** mapa normal y KO, Excel reducido y KO (normal: zipcode
-después de `pos_id` y hexágonos res 9/8/7 en el bloque del clúster; KO: res 9/8/7 + zipcode primero).
+**Los 4 archivos llevan código postal y hexágono (usuario, 2026-10-23):** los 2 Excel (bottler y KO) empiezan con
+`Hexágono res 9 · res 8 · res 7 · Código postal (zipcode) · pos_id` (el del bottler sigue con Nombre, Subcanal, Latitud, Longitud); los 2
+mapas tienen código postal y hexágonos res 9/8/7: el del bottler agrega "5. Toma de decisiones" con la tarjeta "Resultados" dentro del mapa (Código postal · Letras · Rappi · Whisp); en los 2 mapas la leyenda es clicable (clic en un valor lo oculta o lo muestra: p. ej. solo HH, solo Rappi activas, solo share alto), solo lista lo que hay en la vista (con cuántos) y buscar un código postal deja solo lo de ese código (aviso "Solo CP … · quitar ✕") con chips de resolución, ficha del hexágono y búsqueda por código postal o id (`version_ko.py`, `mapa_normal`).
 **Flujo normal E2E; caso atípico desde una ruta (usuario, 2026-10-23):** lo normal es correr el flujo (el 06 rehace los 4 archivos y
 la versión KO corre sola). Solo si el usuario dice que es el caso atípico y manda `outputs\{ciudad}\{bottler}\cliente` (solo tiene esos
 archivos), correr `uv run python .claude/skills/golden-stores-kin/scripts/version_ko.py "<ruta>" [--estados 09,15]`

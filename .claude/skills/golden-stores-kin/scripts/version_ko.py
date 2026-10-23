@@ -10,16 +10,18 @@ Uso (desde la raíz del repo; lo corre solo src/correr.py al terminar bien el 06
         [--estados 09,15]   (entregables sueltos con el mismo formato del 06, p. ej. FEMSA CDMX descargado; --estados = claves INEGI
         de las entidades: si el reducido o el mapa no traen código postal, se calcula con el DENUE de esas entidades)
 
-Lee los entregables del 06 de la ciudad (no los cambia) y escribe al lado, con sufijo _KO:
-- outputs/<ciudad>/<cliente>/cliente/06_mapa_qa_letras_<cliente>_zm_<ciudad>_KO.html: el mismo mapa (con la plantilla vigente de src/mapas.py)
-  sin capas de puntos (PDV, Rappi y sus radios), sin los datos de esos puntos y sin filtro por subcanal. Cada hexágono muestra la
-  letra final y la prioridad que PREDOMINAN entre sus PDV (empate → la mejor: HH, HL, LH, LL · P1 … P4), con el conteo por letra en
-  el tooltip, en res 9 (= clúster NSE), res 8 y res 7: chips "Hexágono" para elegir la resolución y búsqueda por id del hexágono.
-  Los pasos que solo tenían puntos (Letra 2, letras base) se quitan.
-- outputs/<ciudad>/<cliente>/cliente/06_letras_nse_ventas_tradicional_reducido_<cliente>_zm_<ciudad>_KO.xlsx: misma plantilla del
-  reducido (bloques de color, formatos, 3.ª fila con la fuente, Diccionario), una fila por PDV, columnas
-  Hexágono res 9 · res 8 · res 7 · Código postal (zipcode, si el reducido lo trae) · pos_id · Subcanal · resto igual (sin Nombre, Latitud ni
-  Longitud ni la columna repetida del clúster) y al final, en Clasificación, Letras · Acción · Prioridad del hexágono por resolución.
+Deja en outputs/<ciudad>/<cliente>/cliente/ (los 2 mapas y los 2 Excel llevan código postal y hexágonos res 9/8/7):
+- Mapa del bottler 06_mapa_qa_letras_<cliente>_zm_<ciudad>.html (mapa_normal; se reescribe con la plantilla vigente de src/mapas.py):
+  ficha del PDV con código postal y hexágonos y último paso "5. Toma de decisiones" con la tarjeta "Resultados · elige qué ver" dentro
+  del mapa (Código postal · Letras · Rappi · Whisp, combinables), chips res 9/8/7, ficha del hexágono al clic, número del código postal al
+  acercarse, leyenda clicable que solo lista lo que hay en la vista y búsqueda de un código postal que deja solo lo de ese código.
+- Mapa KO ..._KO.html (mapa_ko): sin datos de PDV; pasos 1.1-1.5 por hexágono en la resolución elegida y "3. Toma de
+  decisiones" (Código postal · Letras · Rappi (tiendas de la plataforma) · Whisp: contorno si se combina, relleno y clicable solo). Lo de cada hexágono = lo que PREDOMINA
+  entre sus PDV (empate → la mejor: HH, HL, LH, LL · P1 … P4 · el menor código).
+- Excel reducido del bottler (reducido_normal, solo en el caso atípico; en el E2E lo escribe el 06): Hexágono res 9 · res 8 · res 7 ·
+  Código postal (zipcode) · pos_id · Nombre · Subcanal · Latitud · Longitud · …; solo filas con letras (y con share Whisp si hay Whisp).
+- Excel KO ..._reducido_..._KO.xlsx (excel_ko): misma plantilla; Hexágono res 9 · res 8 · res 7 · Código postal · pos_id · Subcanal · …
+  (sin Nombre ni coordenadas) y al final, en Clasificación, Letras · Acción · Prioridad del hexágono por resolución.
 Res 9 es el clúster NSE del PDV (hexágono que lo contiene); res 8 y res 7 son los hexágonos que contienen al PDV (h3.latlng_to_cell).
 """
 import json
@@ -163,23 +165,21 @@ def tablas_res(D) -> dict:
 PALETA_ZIP = ["#2a78d6", "#eda100", "#1baf7a", "#e34948", "#7b5ea7", "#0a0a0a", "#f08bb5", "#8c6d31", "#4fb3d9", "#a3c639", "#c65a2e", "#5c6bc0"]
 
 
-def ESC_ZIP(tablas):
+def _pdv_zips(D):
+    P = D["datasets"].get("pdv", {"campos": [], "filas": []})
+    return [f[P["campos"].index("zip")] for f in P["filas"]] if "zip" in P["campos"] else []
+
+
+def ESC_ZIP(tablas, extra=()):
     """Color por código postal: códigos consecutivos (vecinos) con colores distintos; la leyenda solo explica cómo leerlo."""
-    zips = sorted({v[0] for t in tablas.values() for v in t["filas"].values() if v[0]})
+    zips = sorted({v[0] for t in tablas.values() for v in t["filas"].values() if v[0]} | {z for z in extra if isinstance(z, str) and z.isdigit()})
     return {"tipo": "categorica", "colores": {z: PALETA_ZIP[int(z) % len(PALETA_ZIP)] for z in zips},
             "leyenda": f"Color = código postal ({len(zips):,} códigos). El número está en el tooltip y en la ficha; búscalo arriba."}
 
 
-def mapa_ko(src: Path, dst: Path):
-    t = src.read_text(encoding="utf-8")
-    a = t.index("const D = ") + len("const D = ")
-    b = t.index(";\ndocument.getElementById('t')", a)
-    D = json.loads(t[a:b])
-    P = D["datasets"]["pdv"]
-    if "zip" not in P["campos"] and (ZIP_ARCHIVOS or DENUE_EXTRA is not None):   # mapa sin código postal: de los archivos
-        il, io, ii = P["campos"].index("lat"), P["campos"].index("lon"), P["campos"].index("id")
-        z = zips([f[ii] for f in P["filas"]], [f[il] for f in P["filas"]], [f[io] for f in P["filas"]])
-        P["campos"].append("zip"); [f.append(v) for f, v in zip(P["filas"], z)]
+def capas_hex(D):
+    """Tablas por resolución (res 9/8/7) y una capa hex por paso y resolución, con tooltip, ficha y búsqueda por código postal.
+    Las usan el mapa KO (todos los pasos) y el mapa normal del bottler (pasos 5-7: código postal, letras y prioridad)."""
     esc = {c["id"]: c.get("escala") for c in D["capas"]}
     dist_nse = next(c["distribucion"] for c in D["capas"] if c["id"] == "hex_N")
     tablas = tablas_res(D)
@@ -207,7 +207,7 @@ def mapa_ko(src: Path, dst: Path):
         "3.": ("letras", esc["pdv_cl"], "Letras finales que predominan entre sus PDV",
                [[esc["pdv_cl"]["etiquetas"][k], f"p_{k}", esc["pdv_cl"]["colores"][k]] for k in LET]),
         "4.": ("prioridad", esc["pdv_prio"], "Prioridad que predomina entre sus PDV", None),
-        "5.": ("zip", ESC_ZIP(tablas), "Código postal que predomina entre sus PDV", None),
+        "5.": ("zip", ESC_ZIP(tablas, _pdv_zips(D)), "Código postal que predomina entre sus PDV", None),
     }
     capas_nuevas, por_paso = [], {k: [] for k in VISTAS}
     for r in RES:
@@ -215,37 +215,118 @@ def mapa_ko(src: Path, dst: Path):
         for paso, (campo, escala, nombre, dist) in VISTAS.items():
             cid = f"{paso.strip('.').replace('.', '_')}_r{r}"
             c = {"id": cid, "res": r, "nombre": f"Res {r} · {nombre}", "tipo": "hex", "fuente": f"r{r}", "campo": campo, "escala": escala,
+                 "grupo": "hex_" + cid.split("_r")[0], "etiqueta_capa": f"Hexágono · {'Código postal' if campo == 'zip' else nombre}",
                  "borde": True, "opacidad": 0.75, "extra": [e for e in EXTRA if e[1] != campo], "ficha": FICHA,
                  "distribucion_ficha": dist_nse, "titulo_distribucion": "NSE de los hogares del hexágono"}
             if dist:
                 c["distribucion"] = dist
-            if campo == "zip":
-                c.update(buscar_campo="zip", buscar_etiqueta="CP", opacidad=0.6)
+            if campo == "zip":                  # el número se lee: etiqueta fija al acercarse y tooltip corto (usuario, 2026-10-23)
+                c.update(buscar_campo="zip", buscar_etiqueta="CP", opacidad=0.6, nombre=f"Res {r} · Código postal",
+                         etiqueta_campo="zip", etiqueta_zoom={9: 14, 8: 12, 7: 11}[r])
             capas_nuevas.append(c); por_paso[paso].append(cid)
+    return tablas, por_paso, capas_nuevas, tiene_wh
+
+
+def enriquecer_whisp(D):
+    """Hexágono Whisp (res 6): sus PDV por letra y prioridad, lo que predomina y el código postal, para su ficha al hacer clic en el KO."""
+    W, P = D["hex"]["wh"], D["datasets"]["pdv"]
+    iS, iC = W["campos"].index("share"), W["campos"].index("clase")
+    ip = {k: P["campos"].index(k) for k in ("lat", "lon", "letras", "prioridad")}
+    iz = P["campos"].index("zip") if "zip" in P["campos"] else None
+    grupos = {}
+    for f in P["filas"]:
+        h = hex_res(None, f[ip["lat"]], f[ip["lon"]], 6)
+        if h:
+            grupos.setdefault(h, []).append(f)
+    campos = ["share", "clase", "n_pdv"] + [f"n_{k}" for k in LET] + ["letras", "accion", "prioridad"] + [f"n_{k}" for k in PRI] + ["zip"]
+    filas = {}
+    for h, v in W["filas"].items():
+        rs = grupos.get(h, [])
+        cl = Counter(f[ip["letras"]] for f in rs if f[ip["letras"]] in LET)
+        cp = Counter(f[ip["prioridad"]] for f in rs if f[ip["prioridad"]] in PRI)
+        zc = Counter(f[iz] for f in rs if iz is not None and isinstance(f[iz], str) and f[iz].isdigit())
+        letra = moda([f[ip["letras"]] for f in rs], LET)
+        filas[h] = ([v[iS], v[iC], len(rs)] + [cl[k] for k in LET] + [letra, ACCION.get(letra), moda([f[ip["prioridad"]] for f in rs], PRI)]
+                    + [cp[k] for k in PRI] + [min(zc, key=lambda k: (-zc[k], k)) if zc else
+                                             (CPS.SIN_CP if rs and iz is not None else None)])   # sin DENUE cerca: se dice el motivo
+    D["hex"]["wh"] = {"campos": campos, "filas": filas}
+
+
+def mapa_ko(src: Path, dst: Path):
+    t = src.read_text(encoding="utf-8")
+    a = t.index("const D = ") + len("const D = ")
+    b = t.index(";\ndocument.getElementById('t')", a)
+    D = json.loads(t[a:b])
+    P = D["datasets"]["pdv"]
+    if "zip" not in P["campos"] and (ZIP_ARCHIVOS or DENUE_EXTRA is not None):   # mapa sin código postal: de los archivos
+        il, io, ii = P["campos"].index("lat"), P["campos"].index("lon"), P["campos"].index("id")
+        z = zips([f[ii] for f in P["filas"]], [f[il] for f in P["filas"]], [f[io] for f in P["filas"]])
+        P["campos"].append("zip"); [f.append(v) for f, v in zip(P["filas"], z)]
+    tablas, por_paso, capas_nuevas, tiene_wh = capas_hex(D)
+    if tiene_wh:
+        enriquecer_whisp(D)
     nota = (" <b>Versión KO:</b> sin puntos; todo se ve por hexágono en la resolución que elijas arriba (res 9 = clúster NSE ≈ 0.1 km², "
             "res 8 ≈ 0.7 km², res 7 ≈ 5.2 km²). Clic en un hexágono: todos sus datos; también se busca por su id.")
     pasos = []
     for s in D["pasos"]:
-        paso = next((k for k in VISTAS if s["titulo"].startswith(k + " ") or s["titulo"].startswith(k)), None)
-        if paso is None:
-            continue                                              # pasos que solo tenían puntos (Letra 2, letras base)
-        s["capas"] = (["wh_share"] if paso == "4." and tiene_wh else []) + por_paso[paso]
+        paso = next((k for k in por_paso if s["titulo"].startswith(k + " ") or s["titulo"].startswith(k)), None)
+        if paso not in ("1.1", "1.2", "1.3", "1.4", "1.5"):
+            continue                    # pasos de puntos (Letra 2, letras base) y 3-5: van juntos en "Vista por hexágono" (abajo)
+        s["capas"] = por_paso[paso]
         if paso == "1.1":
             s["titulo"] = "1.1 NSE de los hogares del hexágono"
         s["que"] += nota
         pasos.append(s)
-    pasos.append({"titulo": "5. Código postal (zipcode)", "capas": por_paso["5."],
-                  "que": "Cada hexágono se pinta con el código postal que más se repite entre sus PDV (color por código; el número está en el "
-                         "tooltip y en la ficha, con todos los códigos del hexágono). Escribe un código postal en Buscar para ver todos sus "
-                         "hexágonos en la resolución elegida." + nota,
-                  "porque": "El CP del cliente no trae código postal: cada PDV toma el del establecimiento DENUE de INEGI más cercano (≤ 500 m).",
-                  "formula": "código postal del hexágono = el que más se repite entre sus PDV (empate → el menor)"})
+    # un solo paso como el del bottler (usuario, 2026-10-23: "agrega el mismo enfoque que hiciste en bottler en KO"): chips "Ver" código
+    # postal · letras · prioridad · share Whisp; Whisp va encima como contorno en "Prioridad" y relleno y clicable en su vista
+    pasos.append(
+        {"titulo": "3. Toma de decisiones", "capas": por_paso["5."] + por_paso["3."] + por_paso["4."] + (["wh_borde", "wh_share"] if tiene_wh else []),
+         "que": "Vista libre: en <b>Resultados</b> (dentro del mapa) elige qué ver y combínalo: código postal (el número aparece al "
+                "acercarte), letras, Rappi (tiendas)" + (" y Whisp (contorno si lo combinas; solo, relleno y con clic para su ficha)" if tiene_wh else "") +
+                ". Cada hexágono muestra lo que predomina entre sus PDV." + nota,
+         "porque": "Resume la zona sin ver punto por punto. El código postal de cada PDV es el del establecimiento DENUE de INEGI más cercano "
+                   "(≤ 500 m): el CP del cliente no lo trae." + (" Prioridad = Letra 1 × share de Coca-Cola de Whisp del hexágono res 6." if tiene_wh
+                   else " Prioridad por letras: HH P1 · HL P2 · LH P3 · LL P4."),
+         "formula": "lo del hexágono = lo que más se repite entre sus PDV (empate → el menor código · HH, HL, LH, LL · P1 … P4)"})
     D["pasos"] = pasos
-    D["capas"] = [c for c in D["capas"] if c.get("siempre") or c["id"] == "wh_share"] + capas_nuevas
+    tiene_rappi = bool(D["datasets"].get("rappi", {}).get("filas")) and any(c["id"] == "rappi" for c in D["capas"])
+    # Rappi sí va en el KO (usuario, 2026-10-23: "en KO puedes agregar rappi"): tiendas de la plataforma, no PDV del bottler
+    D["capas"] = [c for c in D["capas"] if c.get("siempre") or c["id"] == "wh_share" or (tiene_rappi and c["id"] == "rappi")] + capas_nuevas
     # el KO no lleva puntos ni las fuentes finas: solo las tablas por resolución, Whisp y el límite municipal
     D["hex"] = {k: v for k, v in D["hex"].items() if k in ("wh",) or k.startswith("r")}
     D["poligonos"] = {k: v for k, v in D["poligonos"].items() if any(c.get("fuente") == k for c in D["capas"])}
+    rappi_ds, rappi_pop = D["datasets"].get("rappi"), D["popup"].get("rappi")
     D["datasets"], D["popup"], D["cluster"], D["filtro"], D["dist_popup"] = {}, {}, None, None, {}
+    if tiene_rappi:
+        D["datasets"]["rappi"] = rappi_ds
+        if rappi_pop:
+            D["popup"]["rappi"] = rappi_pop
+    vista = {**{f"3_r{r}": "letras" for r in RES}, **{f"4_r{r}": "prioridad" for r in RES}, **{f"5_r{r}": "zip" for r in RES}, "wh_share": "whisp"}
+    for c in D["capas"]:
+        if c["id"] in vista:
+            c["vista"] = vista[c["id"]]
+        if c["id"] == "wh_share":                     # vista propia: relleno, clicable, con su ficha
+            c.update(opacidad=0.6, borde=True, nombre="Whisp: share de Coca-Cola por hexágono res 6 (vs el área)",
+                     extra=[["share Coca-Cola (%)", "share"], ["PDV Tradicional", "n_pdv"], ["Prioridad que predomina", "prioridad"]],
+                     ficha=[["§Whisp (hexágono res 6)", ""], ["Share Coca-Cola (%)", "share"], ["Share alto / bajo (vs área)", "clase"],
+                            ["§Puntos de venta Tradicional", ""], ["PDV", "n_pdv"]] + [[f"{k} · {ACCION[k]}", f"n_{k}"] for k in LET] +
+                           [["Letras que predominan", "letras"], ["Acción Golden Stores", "accion"], ["Prioridad que predomina", "prioridad"]] +
+                           [[k, f"n_{k}"] for k in PRI] + [["Código postal que predomina", "zip"]])
+            borde = {**c, "id": "wh_borde", "vista": "prioridad", "solo_borde": True, "grosor": 3,
+                     "nombre": "Whisp res 6 (contorno): share de Coca-Cola alto / bajo vs el área"}
+    if tiene_wh:
+        D["capas"].append(borde)
+    D["vistas"] = {"etiqueta": "Ver en el hexágono", "defecto": "zip",
+                   "valores": [{"valor": "zip", "etiqueta": "Código postal"}, {"valor": "letras", "etiqueta": "Letras"},
+                               {"valor": "prioridad", "etiqueta": "Prioridad"}]
+                              + ([{"valor": "whisp", "etiqueta": "Share Whisp (res 6)"}] if tiene_wh else [])}
+    D["opciones"] = [
+        {"valor": "zip", "etiqueta": "Código postal", "nota": "el que predomina en cada hexágono; el número aparece al acercarte",
+         "capas": ["hex_5"], "relleno": True, "defecto": True},
+        {"valor": "letras", "etiqueta": "Letras", "nota": "las que predominan en cada hexágono (acción Golden Stores)", "capas": ["hex_3"], "relleno": True}] + \
+        ([{"valor": "rappi", "etiqueta": "Rappi", "nota": "tiendas Rappi (tamaño = pedidos/mes)", "capas": ["rappi"]}] if tiene_rappi else []) + \
+        ([{"valor": "whisp", "etiqueta": "Whisp", "nota": "share de Coca-Cola por hexágono res 6: verde alto, rojo bajo; solo, se puede dar clic",
+           "capas": ["wh_borde"], "solo": ["wh_share"]}] if tiene_wh else [])
     D["resoluciones"] = {"etiqueta": "Hexágono (resolución H3) · aplica a todos los pasos", "defecto": 9,
                          "valores": [{"valor": r, "etiqueta": f"res {r} · {AREA[r]}", "n": len(tablas[r]["filas"])} for r in RES]}
     D["buscar_placeholder"] = "ID del hexágono o código postal · Enter abre el primero"
@@ -291,7 +372,8 @@ def excel_ko(src: Path, dst: Path):
         df[cz] = zips(df[col("pos_id")], df[col("Latitud")], df[col("Longitud")])
         cols.append(cz); fuentes_.append(f"INEGI DENUE · cod_postal del establecimiento más cercano (≤ {CPS.RADIO_MAX_M} m)")
 
-    CLU, POS, SUB = col("Clúster NSE (H3 res 9)"), col("pos_id"), col("Subcanal")
+    CLU = col("Clúster NSE (H3 res 9)") if tiene("Clúster NSE (H3 res 9)") else col("Hexágono (H3 res 9)")   # reducido viejo o nuevo
+    POS, SUB = col("pos_id"), col("Subcanal")
     LAT, LON = col("Latitud"), col("Longitud")
     HEX = {r: (CLU[0], f"Hexágono (H3 res {r})") for r in RES}
     H = "Clasificación"
@@ -406,16 +488,63 @@ def mapa_normal(src: Path) -> bool:
     for e, k in reversed(HEX_POPUP):
         if k not in claves:
             pop.insert(claves.index("cl") + 1 if "cl" in claves else len(pop), [e, k]); cambia = True
-    if cambia:
-        _respaldo(src)
-        src.write_text(MP.pagina(D), encoding="utf-8")
-    print(f"[{CIUDAD}] mapa normal: {"ficha del PDV con código postal y hexágonos res 8/7" if cambia else "ya traía código postal y hexágonos"} → {src.name}")
+    # vista por hexágono y código postal como el KO (usuario, 2026-10-23: "los mapas de bottler no tienen el zipcode como lo tiene
+    # KO" · "y los hexágonos"): se quita lo que haya agregado una corrida anterior y se vuelve a armar con los datos de este mapa
+    # un solo paso (usuario, 2026-10-23: "no puedes unir en una sola capa a estas 3"): chips "Ver" código postal · letras · prioridad
+    nuevos = ("5. Toma de decisiones", "5. Vista por hexágono", "5. Código postal", "6. Letras por hexágono", "7. Prioridad por hexágono")
+    D["pasos"] = [s for s in D["pasos"] if not s["titulo"].startswith(nuevos)]
+    D["capas"] = [c for c in D["capas"] if c.get("res") is None and c["id"] != "pdv_zip"]
+    D["hex"] = {k: v for k, v in D["hex"].items() if not (k.startswith("r") and k[1:].isdigit())}
+    tablas, por_paso, capas_h, _ = capas_hex(D)
+    VISTA = {"5.": "zip", "3.": "letras", "4.": "prioridad"}
+    capas_v = []
+    for c in capas_h:
+        k = c["id"].split("_r")[0] + "."
+        if k in VISTA:
+            capas_v.append({**c, "vista": VISTA[k]})
+    esc_zip = next(c["escala"] for c in capas_v if c["campo"] == "zip")
+    wh = next((c for c in D["capas"] if c["id"] == "wh_share"), None)
+    if wh is not None:                       # Whisp como contorno para combinarlo con otras capas sin taparlas
+        D["capas"] = [c for c in D["capas"] if c["id"] != "wh_borde"]
+        capas_v.append({**wh, "id": "wh_borde", "vista": "prioridad", "solo_borde": True, "grosor": 3, "grupo": "wh_borde",
+                        "nombre": "Whisp res 6 (contorno): share de Coca-Cola alto / bajo vs el área"})
+    D["capas"] += capas_v + [
+        {"id": "pdv_zip", "vista": "zip", "nombre": "PDV: código postal (zipcode)", "tipo": "puntos", "dataset": "pdv", "campo": "zip", "radio_px": 5,
+         "escala": {**esc_zip, "leyenda": "Puntos = PDV con el color de su código postal; hexágonos = el código que predomina."}}]
+    D["pasos"].append(
+        {"titulo": "5. Toma de decisiones", "capas": [c["id"] for c in capas_v] + ["pdv_zip"],
+         "que": "Vista libre: en <b>Resultados</b> (dentro del mapa) elige qué ver y combínalo: código postal, letras, Rappi y Whisp, "
+                "p. ej. código postal + Whisp + letras + Rappi, o solo Rappi y código postal. Cada hexágono muestra lo que predomina entre sus PDV; el número del código postal "
+                "aparece al acercarte. Resolución: res 9 = clúster NSE ≈ 0.1 km², res 8 ≈ 0.7 km², res 7 ≈ 5.2 km². Clic en un hexágono o en un "
+                "PDV: todos sus datos. Busca un código postal o el id de un hexágono.",
+         "porque": "Resume la zona sin ver punto por punto, igual que el mapa KO. El código postal de cada PDV es el del establecimiento DENUE "
+                   "de INEGI más cercano (≤ 500 m): el CP del cliente no lo trae.",
+         "formula": "lo del hexágono = lo que más se repite entre sus PDV (empate → el menor código · HH, HL, LH, LL · P1 … P4)"})
+    D["vistas"] = {"etiqueta": "Ver en el hexágono", "defecto": "zip",
+                   "valores": [{"valor": "zip", "etiqueta": "Código postal"}, {"valor": "letras", "etiqueta": "Letras"}, {"valor": "prioridad", "etiqueta": "Prioridad"}]}
+    # la última vista ofrece solo los resultados de cada proceso (usuario, 2026-10-23: "solo los resultados de cada proceso, no cada capa")
+    D["opciones"] = [
+        {"valor": "zip", "etiqueta": "Código postal", "nota": "el que predomina en cada hexágono; el número aparece al acercarte",
+         "capas": ["hex_5"], "relleno": True, "defecto": True},
+        {"valor": "letras", "etiqueta": "Letras", "nota": "HH Atacar · HL Bloquear · LH Fortalecer · LL Mantener (cada PDV)", "capas": ["pdv_cl"]},
+        {"valor": "rappi", "etiqueta": "Rappi", "nota": "tiendas Rappi (tamaño = pedidos/mes)", "capas": ["rappi"]}]
+    if wh is not None:
+        D["opciones"].append({"valor": "whisp", "etiqueta": "Whisp", "nota": "share de Coca-Cola por hexágono res 6: verde alto, rojo bajo",
+                              "capas": ["wh_borde"], "solo": ["wh_share"]})
+    D["resoluciones"] = {"etiqueta": "Hexágono (resolución H3) · capas por hexágono", "defecto": 9,
+                         "valores": [{"valor": r, "etiqueta": f"res {r} · {AREA[r]}", "n": len(tablas[r]["filas"])} for r in RES]}
+    D["buscar_placeholder"] = "ID, nombre o código postal del PDV, o ID del hexágono · Enter abre el primero"
+    _respaldo(src)
+    src.write_text(MP.pagina(D), encoding="utf-8")
+    cambia = True
+    print(f"[{CIUDAD}] mapa normal: paso 5 \"Toma de decisiones\" (código postal · letras · prioridad, res 9/8/7) y ficha del PDV con código postal y hexágonos → {src.name}")
     return cambia
 
 
 def reducido_normal(src: Path) -> bool:
-    """Excel reducido normal: agrega código postal (después de pos_id) y hexágonos res 8/7 (después del clúster res 9) si no los trae
-    y quita las filas sin letras o, si hay Whisp, sin share Whisp. Misma plantilla; respaldo en anteriores/."""
+    """Excel reducido normal (del bottler) con el mismo arranque que el KO: Hexágono res 9 · res 8 · res 7 · Código postal · pos_id y
+    después sus columnas (Nombre, Subcanal, Latitud, Longitud, …). Agrega lo que falte (código postal de los archivos; hexágonos de la
+    lat/lon) y quita las filas sin letras o, si hay Whisp, sin share Whisp. Misma plantilla; respaldo en anteriores/."""
     wb0 = openpyxl.load_workbook(src)
     ws = wb0["Letras por PDV"]
     titulo, nota = ws.cell(1, 1).value, ws.cell(2, 1).value or ""
@@ -430,34 +559,39 @@ def reducido_normal(src: Path) -> bool:
     fuentes = dict(zip(cols, fuentes_))
     d0 = wb0["Diccionario"]
     dic = pd.DataFrame(list(d0.iter_rows(min_row=5, values_only=True)), columns=[c.value for c in d0[4]])
-    nuevas_dic = {}
-    orden = list(cols)
-    POS, CLU = col("pos_id"), col("Clúster NSE (H3 res 9)")
-    if not tiene(ZIP) and (ZIP_ARCHIVOS or DENUE_EXTRA is not None):
-        cz = (POS[0], ZIP)
-        df[cz] = zips(df[POS], df[col("Latitud")], df[col("Longitud")])
-        orden.insert(orden.index(POS) + 1, cz); fuentes[cz] = F_ZIP
-        nuevas_dic[ZIP] = (POS, {"bloque": POS[0], "columna": ZIP, "definición": "Código postal (zipcode) del PDV: el del establecimiento "
-                                 f"DENUE de INEGI más cercano (≤ {CPS.RADIO_MAX_M} m).", "de dónde sale / fórmula": F_ZIP, "unidad o valores": "5 dígitos"})
-    previo = CLU
+    filas_dic = {r["columna"]: dict(r) for _, r in dic.iterrows()}
+    POS = col("pos_id")
+    CLU = col("Clúster NSE (H3 res 9)") if tiene("Clúster NSE (H3 res 9)") else col("Hexágono (H3 res 9)")
+    HEX = {r: (CLU[0], f"Hexágono (H3 res {r})") for r in RES}
+    agregadas = []
+    if CLU != HEX[9]:                                       # el clúster res 9 se llama "Hexágono (H3 res 9)", como en el KO
+        df[HEX[9]] = df[CLU]; fuentes[HEX[9]] = fuentes.get(CLU)
+        fila = dict(filas_dic.get(CLU[1], {})); fila.update(columna=HEX[9][1], bloque=CLU[0]); filas_dic[HEX[9][1]] = fila
+        agregadas.append("Hexágono (H3 res 9) ← Clúster NSE (H3 res 9)")
     for r in (8, 7):
-        nom = f"Hexágono (H3 res {r})"
-        if not tiene(nom):
-            ch = (CLU[0], nom)
-            df[ch] = [hex_res(None, la, lo, r) or "sin hexágono (sin coordenadas)" for la, lo in zip(df[col("Latitud")], df[col("Longitud")])]
-            orden.insert(orden.index(previo) + 1, ch)
-            fuentes[ch] = f"hexágono H3 res {r} ({AREA[r]}) que contiene al PDV (latitud y longitud del CP)"
-            nuevas_dic[nom] = ((CLU[0], previo[1]), {"bloque": CLU[0], "columna": nom, "definición": f"Hexágono H3 res {r} ({AREA[r]}) que contiene "
-                               "al PDV (mismo id que el Excel y el mapa KO).", "de dónde sale / fórmula": fuentes[ch], "unidad o valores": "id H3"})
-            previo = ch
+        if not tiene(HEX[r][1]):
+            df[HEX[r]] = [hex_res(None, la, lo, r) or "sin hexágono (sin coordenadas)" for la, lo in zip(df[col("Latitud")], df[col("Longitud")])]
+            fuentes[HEX[r]] = f"hexágono H3 res {r} ({AREA[r]}) que contiene al PDV (latitud y longitud del CP)"
+            filas_dic[HEX[r][1]] = {"bloque": CLU[0], "columna": HEX[r][1], "definición": f"Hexágono H3 res {r} ({AREA[r]}) que contiene al PDV "
+                                    "(mismo id que el Excel y el mapa KO).", "de dónde sale / fórmula": fuentes[HEX[r]], "unidad o valores": "id H3"}
+            agregadas.append(HEX[r][1])
         else:
-            previo = col(nom)
+            HEX[r] = col(HEX[r][1])
+    CZ = col(ZIP) if tiene(ZIP) else (POS[0], ZIP)
+    if not tiene(ZIP):
+        df[CZ] = zips(df[POS], df[col("Latitud")], df[col("Longitud")])
+        fuentes[CZ] = F_ZIP
+        filas_dic[ZIP] = {"bloque": POS[0], "columna": ZIP, "definición": "Código postal (zipcode) del PDV: el del establecimiento DENUE de "
+                          f"INEGI más cercano (≤ {CPS.RADIO_MAX_M} m).", "de dónde sale / fórmula": F_ZIP, "unidad o valores": "5 dígitos"}
+        agregadas.append(ZIP)
+    frente = [HEX[9], HEX[8], HEX[7], CZ, POS]
+    orden = frente + [c for c in cols if c not in frente and c != CLU]
     con_letras = df[col("Letras (final)")].isin(LET)
     share = pd.to_numeric(df[col("Share KO Whisp (hexágono res 6)")], errors="coerce") if tiene("Share KO Whisp (hexágono res 6)") else None
     con_whisp = share.notna() if share is not None and share.notna().any() else pd.Series(True, index=df.index)
     quita = int((~(con_letras & con_whisp)).sum())
-    if not nuevas_dic and not quita:
-        print(f"[{CIUDAD}] Excel reducido normal: ya traía código postal y hexágonos y solo filas con letras → {src.name}")
+    if not agregadas and not quita and cols[:5] == frente:
+        print(f"[{CIUDAD}] Excel reducido normal: ya estaba al día (hexágonos y código postal primero, solo filas con letras) → {src.name}")
         return False
     RED = df.loc[con_letras & con_whisp, orden].reset_index(drop=True)
     RED.columns = pd.MultiIndex.from_tuples(orden)
@@ -465,20 +599,14 @@ def reducido_normal(src: Path) -> bool:
     _respaldo(src)
     wb = X.libro()
     X.hoja_tabla_2niveles(wb, "Letras por PDV", RED, titulo=titulo, nota=nota if nota.startswith("Solo PDV") else filtro + nota,
-                          formatos=FMT_NORMAL, anchos={"Nombre": 30, ZIP: 14}, colores_grupo=COLORES, fijar_cols=3 if tiene(ZIP) or ZIP in nuevas_dic else 2,
-                          fuentes=fuentes)
-    filas = [r for _, r in dic.iterrows()]
-    for nom, (despues, fila) in nuevas_dic.items():
-        i = next(k for k, r in enumerate(filas) if r["columna"] == despues[1]) + 1
-        filas.insert(i, pd.Series(fila))
-    dic = pd.DataFrame(filas).reset_index(drop=True)
+                          formatos=FMT_NORMAL, anchos={"Nombre": 30, ZIP: 14}, colores_grupo=COLORES, fijar_cols=5, fuentes=fuentes)
+    dic = pd.DataFrame([filas_dic[c[1]] for c in orden]).reset_index(drop=True)
     dic["#"] = range(1, len(dic) + 1)
     dic = dic[["#", "bloque", "columna", "definición", "de dónde sale / fórmula", "unidad o valores"]]
-    assert list(dic["columna"]) == [c[1] for c in RED.columns], "el Diccionario no sigue el orden de las columnas"
     X.hoja_tabla(wb, "Diccionario", dic, titulo=d0.cell(1, 1).value, nota=d0.cell(2, 1).value, anchos=ANCHOS)
     wb.save(src)
     print(f"[{CIUDAD}] Excel reducido normal: {len(df):,} → {len(RED):,} PDV (fuera {quita:,} sin letras o sin share Whisp) · "
-          f"agregadas {list(nuevas_dic) or 'ninguna'} → {src.name}")
+          f"hexágonos y código postal primero · agregadas {agregadas or 'ninguna'} → {src.name}")
     return True
 
 
@@ -518,5 +646,6 @@ if __name__ == "__main__":
     for f in (mapa, red):
         if not f.exists():
             sys.exit(f"[{CIUDAD}] falta {f}: correr antes el 06 (uv run python src/correr.py --pasos 06 {CIUDAD})")
+    mapa_normal(mapa)
     mapa_ko(mapa, mapa.with_name(mapa.stem + "_KO.html"))
     excel_ko(red, red.with_name(red.stem + "_KO.xlsx"))
