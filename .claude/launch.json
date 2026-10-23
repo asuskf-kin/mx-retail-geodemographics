@@ -11,7 +11,7 @@
         "--bind",
         "127.0.0.1",
         "--directory",
-        "outputs/merida/bepensa"
+        "outputs/merida/bepensa/cliente"
       ],
       "port": 8765
     },
@@ -25,7 +25,7 @@
         "--bind",
         "127.0.0.1",
         "--directory",
-        "outputs/guadalajara/arca"
+        "outputs/guadalajara/arca/cliente"
       ],
       "port": 8766
     }

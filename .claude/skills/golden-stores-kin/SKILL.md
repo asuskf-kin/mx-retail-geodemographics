@@ -126,7 +126,7 @@ El 06 escribe en `cliente/` (además del pptx de letras):
 - `06_diccionario_letras_*.xlsx`: definición, fuente/fórmula y unidad de cada columna (`DEFINICION` en el 06).
 - `06_entregable_final_letras_*.xlsx`: `pos_id, lat, lon` + 3 columnas `*_TotalPortafolio` del CP tal cual + `segmento_golden_store`,
   `prioridad`, `accion` (ninguna celda vacía sin motivo).
-- Mapa `outputs/<ciudad>/<cliente>/06_mapa_qa_letras_*.html` con la marca Kin (`src/mapas.py`, skill `brand-guidelines-kin`): sin la
+- Mapa `outputs/<ciudad>/<cliente>/cliente/06_mapa_qa_letras_*.html` (en `cliente/` desde 2026-10-23) con la marca Kin (`src/mapas.py`, skill `brand-guidelines-kin`): sin la
   palabra "QA" en pantalla, pasos numerados, filtro en chips, búsqueda con Enter, leyenda flotante y ficha con chips; el PDV elegido
   lleva anillo amarillo.
 
@@ -134,6 +134,19 @@ El 06 escribe en `cliente/` (además del pptx de letras):
   urbana, sin dato AltScore…). Revisar con pandas que `Letras por PDV` tenga 0 NaN después de cada cambio de columnas.
 - `07_whisp_share_*.xlsx` (en `outputs/<ciudad>/<cliente>/`): Resumen · Share por hexágono (Región, SubTerritorio principal y todos,
   Segmento, SOM = `share_cajas` = cajas KO / total, share por categoría) · Fabricantes por Categoría · Categorías × Segmento.
+
+**Versión KO (último paso, automático; usuario 2026-10-20, res 9/8/7 y código postal 2026-10-22):** `src/correr.py` corre, al
+terminar bien el 06, `uv run python .claude/skills/golden-stores-kin/scripts/version_ko.py <ciudad>` (también a mano; `--archivos
+<mapa.html> <reducido.xlsx> <mapa_KO.html> <reducido_KO.xlsx> [--estados 09,15]` para entregables sueltos: se le dan el mapa y
+el reducido NORMALES; con `--estados` calcula el código postal si no lo traen). Escribe en `cliente/`, junto a los originales (sin tocarlos):
+`06_mapa_qa_letras_<cliente>_<zm>_KO.html` (sin puntos; chips res 9 = clúster NSE · res 8 · res 7 que cambian **todos** los pasos:
+NSE de los hogares, Censo, clúster NSE, AltScore, nivel final, letras y prioridad que **predominan**; clic en un hexágono = ficha con
+todos sus datos; último paso "5. Código postal (zipcode)"; búsqueda por id o por código postal) y `cliente/06_letras_nse_ventas_tradicional_reducido_<cliente>_<zm>_KO.xlsx` (**misma plantilla**
+del reducido; una fila por PDV; `Hexágono res 9 · res 8 · res 7 · Código postal (zipcode) · pos_id · Subcanal` y el resto igual; sin
+`Nombre`, `Latitud`, `Longitud`; al final Letras · Acción · Prioridad del hexágono por resolución). Los dos Excel (reducido y KO) **solo llevan PDV con
+letras** y, si el archivo trae Whisp, con share Whisp (usuario, 2026-10-23); el Excel completo y el mapa conservan todos. El código postal lo pone el 06
+(`src/codigos_postales.py`: DENUE más cercano, ≤ 500 m, acierto LOO ≈ 91%). Guadalajara: 39,186 PDV; mapa 9,709 · 2,146 · 496
+hexágonos; letra del hexágono = la del PDV en 77% · 71% · 66%.
 
 **Láminas que explican el mapa** (para pegar en un deck): `uv run python .claude/skills/golden-stores-kin/scripts/laminas_mapa.py
 [--pos 2720] [--ciudad guadalajara --cliente arca]` (elegir un PDV HH con nombre comercial, Rappi a 300 m y un clúster de 3-6 PDV

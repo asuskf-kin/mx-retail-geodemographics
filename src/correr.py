@@ -13,6 +13,8 @@ Uso (desde la raiz del repo):
 - Cliente por ciudad (config.CLIENTES; las ciudades son independientes): el paso "00" es 00_cp_validacion (solo CP; las ventas ya no
   se usan desde 2026-10-05: ventas=None en todas las ciudades; 00_ventas_cp_validacion queda como histórico). Antes de correr pasos del cliente se verifica que existan el CP y AltScore
   (enrichedgeodata): si falta uno, la ciudad NO se corre (se piden al cliente).
+- Último paso automático: si el 06 terminó bien, corre .claude/skills/golden-stores-kin/scripts/version_ko.py <ciudad> (mapa y
+  Excel reducido *_KO: sin puntos ni coordenadas, letra y prioridad que predominan en cada hexágono del clúster NSE).
 - Si un notebook falla, no se corre nada que dependa de el; el resto sigue.
 - Guarda cada notebook EJECUTADO en notebooks/ejecutados/<ciudad>/ (para revisar y depurar).
 - Las descargas se reutilizan desde data/raw/<ciudad>/fuentes_oficiales (con candado: dos notebooks no bajan el mismo zip a la vez).
@@ -31,6 +33,7 @@ from nbclient import NotebookClient
 
 BASE = Path(__file__).resolve().parents[1]
 NB = BASE / "notebooks"
+VERSION_KO = BASE / ".claude" / "skills" / "golden-stores-kin" / "scripts" / "version_ko.py"   # corre solo al terminar bien el 06
 PASOS = ["01_socioeconomico_merida", "02_tiendas_denue_merida", "03_union_tiendas_nse"]
 # pasos del cliente (Bepensa, ZM Merida)
 PASOS_CLIENTE = ["00_ventas_cp_validacion", "00_cp_validacion", "00b_altscore_eda", "00c_rappi_eda", "04_hexagonos_pdv",
@@ -136,6 +139,9 @@ def main(ciudades, pasos=None, paralelo=True):
         if "00_cp_validacion" in p_ciudad:              # las dependencias se escriben con el 00 de ventas
             ALIAS["00_ventas_cp_validacion"] = "00_cp_validacion"; ALIAS_INV["00_cp_validacion"] = "00_ventas_cp_validacion"
         hechos, fallidos = correr_ciudad(ciudad, p_ciudad, paralelo)
+        if "06_letras_nse_ventas" in hechos:          # último paso: versión KO (mapa y Excel reducido por hexágono, sin puntos)
+            r = subprocess.run([sys.executable, str(VERSION_KO), ciudad], cwd=BASE, env={**os.environ, "CIUDAD": ciudad})
+            (hechos if r.returncode == 0 else fallidos).add("version_ko")
         print(f"[{ciudad}] listo en {time.time() - t:.0f}s | OK: {len(hechos)} | con fallo u omitidos: {sorted(fallidos) or 'ninguno'}", flush=True)
 
 

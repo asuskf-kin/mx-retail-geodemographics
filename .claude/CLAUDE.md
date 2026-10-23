@@ -7,7 +7,7 @@ Separa los canales **Moderno** (cadenas) y **Tradicional** (abarrotes e independ
 
 Para replicarlo en otra ciudad usa la skill `/nse-tiendas-mx` (en `.claude/skills/nse-tiendas-mx/`).
 
-## Para empezar (persona o sesión nueva) — estado al 2026-10-05
+## Para empezar (persona o sesión nueva) — estado al 2026-10-22 (versión KO y código postal; reglas base del 2026-10-05)
 **Reglas de trabajo** (pedidas por el usuario; antes vivían solo en la memoria local de una sesión):
 1. **Ciudades con cliente (independientes):** ZM Mérida = **Bepensa** y ZM Guadalajara = **Arca** (usuario, 2026-10-05; `config.CLIENTES`).
    Cada ciudad usa solo sus datos y un cambio para una no debe alterar la otra; no correr otras ciudades. (El CP de FEMSA no cubre
@@ -91,6 +91,7 @@ src/correr.py        corre los notebooks por ciudad (en paralelo según dependen
 src/cadenas.py       cadenas y canal Moderno/Tradicional: única regla para DENUE y PDV del cliente
 src/altscore.py      señales AltScore del cliente: carga (geohex_geodig.parquet, centinelas → NaN), familias, ubicación (location.lat/lng)
                      e índice NSE AltScore (PC1 de los proxies que forman escala en la ZM, `seleccionar_proxies`)
+src/codigos_postales.py código postal del PDV: cod_postal del establecimiento DENUE más cercano (≤ 500 m; acierto LOO ≈ 91%)
 src/rappi.py         Rappi: etiquetas de ciudad, regla "sueros primero" (subcategoría → marca → nombre → categoría), tiendas físicas
 src/letras.py        fórmulas del 06: Letra 1 (NSE del clúster H3 res 9 + 300 m; `a_escala` y `mover_nse`: AltScore mueve el NSE) y
                      Letra 2 (`rango_desc` y `score_letra2`: rangos de venta, CP y Rappi), `centros` y áreas H3
@@ -105,15 +106,16 @@ notebooks/00, 00b, 00c, 04, 05, 06, 07 cliente de la ciudad (Mérida = Bepensa �
                      05 Golden Stores (deck + Excel) · 07 share Coca-Cola de Whisp por hexágono res 6 (opcional; corre ANTES del 06) ·
                      06 letras del canal Tradicional (Letra 1 = NSE del clúster + AltScore · Letra 2 = venta y CP + Rappi · prioridad)
 .claude/skills       nse-tiendas-mx (otra ciudad) · golden-stores-kin (cliente + deck, con scripts/instalar.py, qa_deck.py,
-                     marca_claude_design.py, laminas_mapa.py: láminas que explican el mapa y el diccionario, y cifras_decks.py: cifras de los decks) · brand-guidelines-kin (marca Kin: logos, fuentes, colores, template de deck) ·
+                     marca_claude_design.py, laminas_mapa.py: láminas que explican el mapa y el diccionario, cifras_decks.py: cifras de los decks
+                     y version_ko.py: mapa y Excel reducido *_KO por hexágono, último paso automático del correr.py) · brand-guidelines-kin (marca Kin: logos, fuentes, colores, template de deck) ·
                      executive-pitch-presentation-builder · retail-math-eda · archify
 data/raw/<ciudad>/<cliente>/ cp/, enrichedgeodata/ (AltScore) y fuentes_oficiales/<institución>/<fuente>/ (se
                      regeneran solas): merida/bepensa · guadalajara/arca (ciudad sin cliente: data/raw/<ciudad>/fuentes_oficiales/) ·
                      data/raw/rappi/rappi.csv (Rappi nacional) y data/raw/whisp/Whisp.csv (Whisp, opcional), fuera de git
 data/processed/merida/bepensa/   intermedios (misma estructura ciudad → bottler; ciudad sin cliente: data/processed/<ciudad>/)
-outputs/merida/bepensa/          Excel de análisis y QA (00-04) y el mapa HTML del 06 (06_mapa_qa_letras_*.html; en pantalla ya no dice "QA")
+outputs/merida/bepensa/          Excel de análisis y QA (00-04); los mapas HTML del 06 (normal y _KO) van en cliente/ (usuario, 2026-10-23)
 outputs/merida/bepensa/cliente/  SOLO lo que se entrega al cliente: 05 (deck + Excel Golden Stores) y 06 (Excel de letras completo,
-                                 reducido, diccionario y entregable final + su presentación); laminas/ (PNG 1920×1080 que explican el
+                                 reducido, diccionario y entregable final + su presentación), mapas 06_mapa_qa_letras_*.html y *_KO.html y versión KO del reducido; laminas/ (PNG 1920×1080 que explican el
                                  mapa y el diccionario + figuras/ para Claude Design, de laminas_mapa.py); versiones viejas en anteriores/
 docs/flujo_pipeline.*            flujograma del pipeline 00 → 07 (skill archify: .dataflow.json → .html con validate, deliver y
                                  visual-check); el anterior (solo 01-03) en docs/anteriores/. Se actualiza cuando cambia el flujo
@@ -381,15 +383,41 @@ con las mismas cifras de abajo; los intermedios de Guadalajara se regeneran solo
   CP (PDV sin venta)". Ojo: las letras se calculan con las columnas de sueros (`CP_CATEGORIA`), pero el formato pide las de TotalPortafolio.
 - **Excel reducido (usuario, 2026-10-02):** `cliente/06_letras_nse_ventas_tradicional_reducido_bepensa_zm_merida.xlsx` (lo escribe el 06):
   las columnas de la ficha del PDV del mapa HTML (`POPUP["pdv"]`, función `ficha_pdv`) para los 7,037 PDV Tradicional y al final Letras
-  base (INEGI + CP) · Letras (final) · Acción Golden Stores · Prioridad (43 columnas con Share KO Whisp, share alto/bajo y fuente de la
-  prioridad). **Ninguna celda vacía** en el Excel completo ni en el reducido (2026-10-05): `tabla_pdv` pone el motivo de cada faltante
+  base (INEGI + CP) · Letras (final) · Acción Golden Stores · Prioridad (44 columnas con Share KO Whisp, share alto/bajo y fuente de la
+  prioridad; desde 2026-10-22 `Código postal (zipcode)` va justo después de `pos_id`). **Solo filas con valor** (usuario, 2026-10-23:
+  "no aportan valor"): fuera los PDV sin letras y, si el área tiene Whisp, los sin share Whisp en su hexágono; sin Whisp en el área
+  (Mérida) solo los sin letras. Igual en el KO (también con `--archivos`). El Excel completo y el mapa conservan todos los PDV. **Ninguna celda vacía** en el Excel completo ni en el reducido (2026-10-05): `tabla_pdv` pone el motivo de cada faltante
   ("no aplica · sin venta", "sin NSE (sin hogares a 300 m)", "fuera de AGEB urbana", "sin dato AltScore en el buffer del clúster"…).
 - **Mapa HTML con marca Kin (2026-10-02):** `src/mapas.py` toma de la skill brand-guidelines-kin los tokens, las fuentes (base64) y el logo
   IV_19 / favicon S_14 (`_marca()`); panel con encabezado oscuro, pasos numerados con anterior/siguiente y flechas, filtro en chips,
   búsqueda con Enter/Esc, leyenda flotante abajo a la derecha y ficha con chips de letras, prioridad y acción; el PDV elegido lleva
   anillo amarillo. **Sin "QA" en pantalla** (usuario, 2026-10-02): eyebrow "Mapa interactivo", título "Letras por punto de venta · canal
   Tradicional", sección "Pasos" (el archivo conserva el nombre `06_mapa_qa_letras_*.html`). Probado en el navegador (1440×900, sin
-  errores JS). Para verlo: `.claude/launch.json` → servidor `mapa-qa` (puerto 8765).
+  errores JS). **Se escribe en `cliente/`** (usuario, 2026-10-23: "que los mapas se creen en la carpeta clientes"; el 06 borra la copia
+  vieja de `outputs/<ciudad>/<cliente>/`). Para verlo: `.claude/launch.json` → servidor `mapa-qa` (8765, Mérida) o `mapa-qa-gdl` (8766), ambos sobre `cliente/`.
+- **Versión KO = último paso automático (usuario, 2026-10-20; res 9/8/7, ficha y código postal 2026-10-22, probado solo en Guadalajara):**
+  al terminar bien el 06, `src/correr.py` corre `.claude/skills/golden-stores-kin/scripts/version_ko.py <ciudad>` (también a mano;
+  `--archivos <mapa.html> <reducido.xlsx> <mapa_KO.html> <reducido_KO.xlsx> [--estados 09,15]` para entregables sueltos de otra
+  máquina o ciudad sin configurar: con el mapa y el Excel reducido NORMALES (no los KO: el KO ya no trae coordenadas) saca hexágonos
+  res 9/8/7 y, si no traen código postal, lo calcula con el DENUE de esas entidades, que baja a `data/raw/denue_estados/`) y deja en
+  `cliente/`, sin tocar los originales:
+  - `06_mapa_qa_letras_<cliente>_<zm>_KO.html`: sin puntos ni datos de PDV; chips "Hexágono (resolución H3)" **res 9 (= clúster NSE) ·
+    res 8 · res 7 que aplican a TODOS los pasos** (usuario: "no se comunica con todos los datos"): NSE de los hogares (suma/media
+    ponderada por hogares de los hexágonos res 10), Censo, clúster NSE (res 8/7 = media de sus clústeres ponderada por PDV), AltScore,
+    nivel final, letras y prioridad que **predominan** entre sus PDV (empate → la mejor) y share Whisp del res 6. Clic en un hexágono →
+    ficha con todos sus datos (con su código postal); **último paso "5. Código postal (zipcode)"** (color por el código que
+    predomina entre sus PDV; usuario 2026-10-22: "el último déjalo para que lo vean con zip code"); búsqueda por id del hexágono o
+    por código postal (marca todos sus hexágonos; cambia sola de resolución). Lo arma `mapas.pagina()` con la plantilla
+    vigente (`resoluciones`, `ficha` y `buscar_placeholder` en `src/mapas.py`). Guadalajara: 9,709 · 2,146 · 496 hexágonos; 2.1 MB.
+  - `cliente/06_letras_nse_ventas_tradicional_reducido_<cliente>_<zm>_KO.xlsx`: **misma plantilla** del reducido; una fila por PDV;
+    `Hexágono (H3 res 9) · res 8 · res 7 · Código postal (zipcode) · pos_id · Subcanal` primero (4 columnas fijas) (res 9 = clúster NSE; res 8/7 = hexágono
+    que contiene al PDV); sin `Nombre`, `Latitud`, `Longitud`; al final Letras · Acción · Prioridad del hexágono por resolución.
+    Guadalajara: 39,186 PDV, 52 columnas; letra del hexágono = la del PDV en 77% (res 9) · 71% (res 8) · 66% (res 7).
+- **Código postal (zipcode) del PDV (usuario, 2026-10-22):** el CP del cliente no lo trae → `src/codigos_postales.py` le asigna el
+  `cod_postal` del establecimiento **DENUE** más cercano de la ZM (≤ 500 m; si no, "sin código postal (sin DENUE a 500 m)"). Lo
+  escribe el 06 en el Excel completo y en el reducido (`Código postal (zipcode)` **justo después de `pos_id`**: "debe estar en las primeras
+  columnas"; reducido = 44 columnas, 3 fijas), en la ficha del PDV del mapa (campo `zip`) y pasa al KO. Guadalajara: 98.4% de los PDV con código, 511 códigos, distancia mediana 12 m; acierto leave-one-out en el DENUE 90.8%
+  (con 5 vecinos 90%, con 10 88%: por eso el más cercano). Mérida aún no se corre con este cambio.
 - **Láminas del mapa (2026-10-02):** `uv run python .claude/skills/golden-stores-kin/scripts/laminas_mapa.py [--pos 2720]` captura el
   mapa con Chrome sin interfaz (los números los dibuja el propio mapa; sin fondo de calles porque no hay WebGL) y arma 5 PNG con marca
   Kin en `cliente/laminas/` + `figuras/`: cómo leer el mapa (8 elementos), la ficha del PDV (7 secciones) y el diccionario (3 partes,

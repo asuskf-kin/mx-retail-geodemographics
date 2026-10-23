@@ -54,7 +54,7 @@
 # **QA con mapa en cada paso** (qué se hace y por qué): 1.1 NSE del punto · 1.2 variante INEGI por manzana · 1.3 clúster NSE ·
 # 1.4 AltScore mueve el NSE · 1.5 Letra 1 · 2.1 venta media + CP · 2.2 Rappi del buffer · 2.3 vector y score ·
 # 2.4 respaldo y sensibilidad · 2.5 Letra 2 · 3 letras juntas. Además, un **mapa interactivo**
-# (`outputs/<ciudad>/<cliente>/06_mapa_qa_letras_*.html`, con filtro por subcanal) con los mismos pasos: clic en un hexágono o
+# (`outputs/<ciudad>/<cliente>/cliente/06_mapa_qa_letras_*.html`, con filtro por subcanal) con los mismos pasos: clic en un hexágono o
 # en un PDV dibuja su clúster NSE, su buffer y su ficha.
 #
 # **Entregables (carpeta del cliente):** Excel del canal Tradicional con la estructura pos_id · AltScore · INEGI · ventas (CP,
@@ -85,6 +85,7 @@ from IPython.display import display
 
 import config as C
 import altscore as A
+import codigos_postales as CPS
 import eda
 import letras as LT
 import mapas as MP
@@ -150,6 +151,13 @@ REF = pd.Series([ref_zm[f"HHs_{c}"].sum() / ref_zm["Total HHs"].sum() * 100 for 
 
 MODERNO = todos.Cadena[~TRAD].value_counts()
 ids["segmento"] = ids.Subcanal                                            # subcanal del CP (pos_subchannel)
+# código postal (zipcode) del PDV: el del establecimiento DENUE más cercano (usuario, 2026-10-22; el CP del cliente no lo trae)
+DENUE_CP = CPS.denue_zm()
+_cpo = CPS.asignar(ids.Latitud, ids.Longitud, DENUE_CP)
+ids["codigo_postal"], ids["dist_cp_m"] = _cpo.codigo_postal.to_numpy(), _cpo.dist_m.to_numpy()
+ACIERTO_CP = CPS.acierto_loo(DENUE_CP)
+print(f"Código postal (DENUE): {ids.codigo_postal.ne(CPS.SIN_CP).mean():.1%} de los PDV con código · {ids.codigo_postal.nunique():,} códigos · "
+      f"distancia mediana al establecimiento DENUE {ids.dist_cp_m.median():.0f} m · acierto leave-one-out en el DENUE {ACIERTO_CP:.1%}")
 ids["con_venta"] = ids.pos_id_cp.map(pdv0[f"PotentialQuantitative_{C.CP_CATEGORIA}"]).gt(0)   # con venta según el CP
 ids["HH_area"] = ids["HHs en el área"]                                    # hogares del buffer del propio PDV (04): solo para el QA
 
@@ -1090,7 +1098,7 @@ ESC_NSE = {"tipo": "continua", "min": 1, "max": 6, "colores": MP.SECUENCIAL, "ba
 DIST_NSE3 = [["Bajo (D+ y D/E)", "p_bajo", MP.COLOR_NSE3["bajo"]], ["Medio (C y C−)", "p_medio", MP.COLOR_NSE3["medio"]],
              ["Alto (C+ y A/B)", "p_alto", MP.COLOR_NSE3["alto"]]]              # barra de distribución en los tooltips
 ESC_CENSO = {"tipo": "continua", "min": 0, "max": 100, "colores": MP.AZULES, "bajo": "0", "alto": "100"}
-POPUP = {"pdv": [("ID PDV", "id"), ("Nombre", "nombre"), ("Subcanal", "segmento"), ("Clúster NSE (H3 res 9)", "cl"), ("PDV del clúster NSE", "ncln"),
+POPUP = {"pdv": [("ID PDV", "id"), ("Código postal (zipcode)", "zip"), ("Nombre", "nombre"), ("Subcanal", "segmento"), ("Clúster NSE (H3 res 9)", "cl"), ("PDV del clúster NSE", "ncln"),
                  ("Distancia al centro del clúster (m)", "dcen"), ("Hogares del clúster (buffer de 300 m)", "hog"),
                  ("NSE del punto (hexágono res 10)", "N_punto"), ("NSE de su AGEB", "N_ageb"), ("Nivel NSE INEGI del clúster (1-6)", "Ni"),
                  ("NSE predominante (bajo / medio / alto)", "clase"), ("% ABC+ del clúster", "abc"), ("Índice Censo del clúster (0-100)", "censo"),
@@ -1250,7 +1258,7 @@ si_no = {True: "Sí", False: "No"}
 def ficha_pdv(g):
     """Columnas de la ficha del PDV en el mapa HTML (las mismas van al Excel reducido)."""
     return pd.DataFrame({
-        "id": g.pos_id_cp.astype(str), "nombre": g.Nombre.astype(str).str.replace("ABARRROTES", "ABARROTES"), "segmento": g.segmento,
+        "id": g.pos_id_cp.astype(str), "zip": g.codigo_postal, "nombre": g.Nombre.astype(str).str.replace("ABARRROTES", "ABARROTES"), "segmento": g.segmento,
         "lat": g.Latitud.round(6), "lon": g.Longitud.round(6), "cl": g.cluster_nse, "ncln": g.n_cluster_nse, "dcen": g.dist_centro_m.round(0),
         "hog": g.HH_cluster.round(0), "N_punto": g.N_punto.round(2), "N_ageb": g.N_ageb.round(2), "Ni": g.N_inegi.round(2), "clase": g.nse_clase,
         "pb": g.nse_bajo.round(0), "pm": g.nse_medio.round(0), "pa": g.nse_alto.round(0), "abc": g.abc.round(1), "censo": g.censo_area.round(0),
@@ -1265,7 +1273,8 @@ def ficha_pdv(g):
 
 
 pdv_js = ficha_pdv(g)
-MAPA_QA = C.OUT / f"06_mapa_qa_letras_{C.CLIENTE}_{C.SLUG}.html"
+MAPA_QA = C.OUT_CLIENTE / f"06_mapa_qa_letras_{C.CLIENTE}_{C.SLUG}.html"     # los mapas van en cliente/ (usuario, 2026-10-23)
+C.OUT_CLIENTE.mkdir(parents=True, exist_ok=True)
 MP.mapa_html(MAPA_QA, "Letras por punto de venta · canal Tradicional", f"{C.CLIENTE.title()} · {C.ZM_NOMBRE} · sueros e hidratación · clúster NSE H3 res {RES_CL} + {R300} m",
              (g.Latitud.median(), g.Longitud.median()), {"pdv": pdv_js, "clusters": clusters_js, "rappi": rappi_js, "bepensa": bepensa_js}, CAPAS,
              pasos_qa(pdv_js), POPUP, hexagonos={"hex": hex_js, "cl": cl_js, **({"wh": whisp_js} if USA_WHISP else {})}, poligonos={"agebs": ageb_js, "municipios": mun_js}, radio_m=R300,
@@ -1274,7 +1283,8 @@ MP.mapa_html(MAPA_QA, "Letras por punto de venta · canal Tradicional", f"{C.CLI
                                          "partes": [[e, k, col] for (e, _, col), k in zip(DIST_NSE3, ["pb", "pm", "pa"])]},
                                  "clusters": {"titulo": "Hogares del buffer de 300 m del clúster", "partes": DIST_NSE3}},
              cluster={"dataset": "clusters", "campo": "cl", "miembros": "pdv"})
-for viejo in C.OUT.glob(f"06_mapa_qa_letras_*_{C.CLIENTE}_{C.SLUG}.html"):   # versiones anteriores (un mapa por canal)
+for viejo in [*C.OUT.glob(f"06_mapa_qa_letras_*{C.CLIENTE}_{C.SLUG}*.html"),          # antes iban fuera de cliente/ (y el KO)
+              *C.OUT_CLIENTE.glob(f"06_mapa_qa_letras_*_{C.CLIENTE}_{C.SLUG}.html")]:   # versiones anteriores (un mapa por canal)
     viejo.unlink()
 print(f"Mapa: {MAPA_QA.name} ({MAPA_QA.stat().st_size / 1e6:.1f} MB, {len(pdv_js):,} PDV Tradicional, {len(clusters_js):,} clústeres NSE: "
       + ", ".join(f"{k.title()} {v:,}" for k, v in pdv_js.segmento.value_counts().items()) + ")")
@@ -1363,6 +1373,9 @@ def tabla_pdv(d):
 
     P_ = "Punto de venta (CP)"
     col(P_, "pos_id", d.pos_id_cp, f"CP {C.CLIENTE_NOMBRE} (pos_id)")
+    if "codigo_postal" in d.columns:                           # zipcode en las primeras columnas (usuario, 2026-10-22)
+        col(P_, "Código postal (zipcode)", d.codigo_postal,
+            f"INEGI DENUE · cod_postal del establecimiento más cercano (≤ {CPS.RADIO_MAX_M} m)")
     col(P_, "Nombre", d.Nombre.astype(str).str.replace("ABARRROTES", "ABARROTES"), f"CP {C.CLIENTE_NOMBRE} (pos_name)")
     col(P_, "Subcanal", d.Subcanal, f"CP {C.CLIENTE_NOMBRE} (pos_subchannel)")
     col(P_, "Latitud", d.Latitud, f"CP {C.CLIENTE_NOMBRE} (pos_latitude, limpia en el 00)")
@@ -1553,7 +1566,7 @@ print(f"Entregable final: {XLSX_FINAL.name} ({len(FINAL):,} PDV Tradicional) · 
 # PDV" (bloques de color, 2 niveles de encabezado y 3.ª fila con la fuente) y, al final, Letras base (INEGI + CP) · Letras (final) ·
 # Acción Golden Stores · Prioridad. Lleva su hoja Diccionario; el diccionario va también en un Excel aparte.
 P_ = "Punto de venta (CP)"
-RED_COLS = [(P_, "pos_id"), (P_, "Nombre"), (P_, "Subcanal"), (P_, "Latitud"), (P_, "Longitud"),
+RED_COLS = [(P_, "pos_id"), (P_, "Código postal (zipcode)"), (P_, "Nombre"), (P_, "Subcanal"), (P_, "Latitud"), (P_, "Longitud"),
             (ALT_BLOQUE, "Índice NSE AltScore del clúster (0-100)"), (ALT_BLOQUE, "NSE AltScore en escala 1-6"),
             (GOB, "Hogares del clúster (buffer de 300 m)"), (GOB, "Nivel NSE INEGI del clúster (media, 1 = D/E … 6 = A/B)"),
             (GOB, "NSE predominante del clúster"), (GOB, "NSE del punto (hexágono res 10)"), (GOB, "NSE de su AGEB"), (GOB, "% ABC+ del clúster"),
@@ -1572,12 +1585,22 @@ RED_COLS = [(P_, "pos_id"), (P_, "Nombre"), (P_, "Subcanal"), (P_, "Latitud"), (
 faltan = [c_ for c_ in RED_COLS if c_ not in TABLA.columns]
 assert not faltan, f"columnas que ya no existen en TABLA: {faltan}"
 RED = TABLA[RED_COLS]
+# solo filas con valor (usuario, 2026-10-23: "no aportan valor"): fuera los PDV sin letras y, si el área tiene Whisp, los PDV sin share
+# Whisp en su hexágono; sin Whisp en el área (Mérida) solo se quitan los sin letras. El Excel completo los conserva todos.
+_con_letras = RED[("Clasificación", "Letras (final)")].isin(["HH", "HL", "LH", "LL"])
+_share = pd.to_numeric(RED[("Clasificación", "Share KO Whisp (hexágono res 6)")], errors="coerce")
+_con_whisp = _share.notna() if _share.notna().any() else pd.Series(True, index=RED.index)
+print(f"Excel reducido: fuera {(~_con_letras).sum():,} PDV sin letras y {(_con_letras & ~_con_whisp).sum():,} sin share Whisp "
+      f"({'el área tiene Whisp' if _share.notna().any() else 'sin Whisp en el área: solo sin letras'}); quedan {(_con_letras & _con_whisp).sum():,}")
+RED = RED[_con_letras & _con_whisp]
 DEFINICION = {
     "pos_id": f"Identificador del punto de venta en el CP de {C.CLIENTE_NOMBRE}.",
     "Nombre": "Nombre del punto de venta.",
     "Subcanal": "Subcanal del PDV en el CP (abarrotes, cervezas vinos y licores, hogar con venta, comerciante en general, farmacias).",
     "Latitud": "Latitud del PDV (grados decimales, WGS84).",
     "Longitud": "Longitud del PDV (grados decimales, WGS84).",
+    "Código postal (zipcode)": f"Código postal (zipcode) del PDV: el del establecimiento DENUE de INEGI más cercano (a ≤ {CPS.RADIO_MAX_M} m; "
+                             f"el CP del cliente no lo trae). Validación en el DENUE: el vecino más cercano tiene el mismo código en {ACIERTO_CP:.0%} de los casos.",
     "Índice NSE AltScore del clúster (0-100)": "Nivel socioeconómico digital de la zona: media de los puntos AltScore a 300 m del centro del clúster (0 = más bajo, 100 = más alto).",
     "NSE AltScore en escala 1-6": "El índice AltScore pasado a la escala del NSE AMAI (1 = D/E … 6 = A/B) para poder mezclarlo con INEGI.",
     "Hogares del clúster (buffer de 300 m)": "Hogares 2025 a 300 m del centro del clúster NSE (Censo 2020 por manzana y localidades rurales, actualizados con la Intercensal 2025).",
@@ -1619,7 +1642,7 @@ DEFINICION = {
 }
 UNIDAD = {"Venta media (cajas/mes)": "cajas/mes", "CP · potencial (cajas/mes)": "cajas/mes", "Rappi · pedidos/mes totales del buffer": "pedidos/mes",
           "Rappi (pedidos/mes medios de sus tiendas)": "pedidos/mes", "Rappi · venta del buffer (MXN/mes, referencia)": "MXN/mes",
-          "Hogares del clúster (buffer de 300 m)": "hogares", "Distancia al centro del clúster (m)": "metros", "Latitud": "grados", "Longitud": "grados",
+          "Hogares del clúster (buffer de 300 m)": "hogares", "Distancia al centro del clúster (m)": "metros", "Latitud": "grados", "Longitud": "grados", "Código postal (zipcode)": "5 dígitos",
           "% ABC+ del clúster": "%", "Rappi · tiendas a 300 m": "tiendas", "PDV del clúster NSE": "PDV"}
 DICC = pd.DataFrame([{"#": i_ + 1, "bloque": bq, "columna": cn, "definición": DEFINICION.get(cn, ORIGEN.get((bq, cn), "")),
                       "de dónde sale / fórmula": ORIGEN.get((bq, cn), ""), "unidad o valores": UNIDAD.get(cn, "—")}
@@ -1627,9 +1650,9 @@ DICC = pd.DataFrame([{"#": i_ + 1, "bloque": bq, "columna": cn, "definición": D
 assert DICC["definición"].ne("").all()
 wb_r = X.libro()
 X.hoja_tabla_2niveles(wb_r, "Letras por PDV", RED, titulo="Letras por punto de venta · canal Tradicional (reducido)",
-                      nota="Columnas de la ficha del PDV en el mapa de QA · al final Letras base (INEGI + CP), Letras (final), Acción Golden Stores y Prioridad. "
+                      nota="Solo PDV con letras (y con share Whisp si el área tiene Whisp; el Excel completo trae todos). Columnas de la ficha del PDV en el mapa · al final Letras base (INEGI + CP), Letras (final), Acción Golden Stores y Prioridad. "
                            "La 3.ª fila dice de dónde sale cada columna; la hoja Diccionario define cada una.",
-                      formatos=FMT, anchos={"Nombre": 30}, colores_grupo=COLORES, fijar_cols=2,
+                      formatos=FMT, anchos={"Nombre": 30, "Código postal (zipcode)": 14}, colores_grupo=COLORES, fijar_cols=3,
                       fuentes={k: v for k, v in ORIGEN.items() if k in set(RED.columns)})
 X.hoja_tabla(wb_r, "Diccionario", DICC, titulo="Diccionario de datos · Letras por PDV (reducido)",
              nota="Una fila por columna de la hoja Letras por PDV, en el mismo orden.",

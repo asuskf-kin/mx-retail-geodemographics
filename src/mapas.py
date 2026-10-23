@@ -63,7 +63,7 @@ def tabla_js(df: pd.DataFrame) -> dict:
 
 
 def mapa_html(ruta, titulo, subtitulo, centro, datasets, capas, pasos, popup, hexagonos=None, poligonos=None, radio_m=300, zoom=12,
-              filtro=None, distribucion_popup=None, cluster=None):
+              filtro=None, distribucion_popup=None, cluster=None, resoluciones=None, buscar_placeholder=None):
     """Escribe el mapa interactivo.
 
     datasets = {nombre: DataFrame con columnas lat, lon, ...}; hexagonos = DataFrame indexado por id H3, o {fuente: DataFrame}
@@ -74,26 +74,33 @@ def mapa_html(ruta, titulo, subtitulo, centro, datasets, capas, pasos, popup, he
     filtro = {dataset, campo, valores, etiqueta}: casillas en el panel (p. ej. subcanal) que filtran los puntos.
     cluster = {dataset, campo, miembros}: el campo con el id H3 del clúster NSE de cada fila; al seleccionar una fila se dibujan
     su hexágono, el buffer de radio_m desde su centro y las filas de `miembros` con el mismo id.
+    resoluciones = {etiqueta, valores: [{valor, etiqueta, n}], defecto}: chips para elegir la resolución H3; una capa con "res" se ve
+    solo en su resolución y su tooltip muestra el id del hexágono, que también se puede buscar (versión KO del 06).
     Una capa hex o poligonos con "distribucion" = [[etiqueta, campo, color], ...] (campos en %) muestra en su tooltip una barra
     apilada con esos %; distribucion_popup = {dataset: {"titulo", "partes": [[etiqueta, campo, color], ...]}} la pone arriba de la
     ficha al hacer clic en un punto.
     """
     datos = {"titulo": titulo, "subtitulo": subtitulo, "centro": list(centro), "zoom": zoom, "radio": radio_m,
              "datasets": {k: tabla_js(v) for k, v in datasets.items()}, "capas": capas, "pasos": pasos, "popup": popup,
-             "hex": {}, "poligonos": {}, "filtro": filtro, "dist_popup": distribucion_popup or {}, "cluster": cluster}
+             "hex": {}, "poligonos": {}, "filtro": filtro, "dist_popup": distribucion_popup or {}, "cluster": cluster,
+             "resoluciones": resoluciones, "buscar_placeholder": buscar_placeholder}
     hexs = {"hex": hexagonos} if isinstance(hexagonos, pd.DataFrame) else (hexagonos or {})
     for k, hx in hexs.items():
         datos["hex"][k] = {"campos": list(hx.columns), "filas": {h: [_limpio(v) for v in fila] for h, fila in
                                                                 zip(hx.index, hx.itertuples(index=False))}}
     for k, g in (poligonos or {}).items():
         datos["poligonos"][k] = json.loads(g.to_json(drop_id=True))
+    with open(ruta, "w", encoding="utf-8") as f:
+        f.write(pagina(datos))
+    return ruta
+
+
+def pagina(datos: dict) -> str:
+    """HTML del mapa con la plantilla vigente para un dict de datos ya armado (lo reusa version_ko.py con el D de un mapa existente)."""
     js = json.dumps(datos, ensure_ascii=False, separators=(",", ":"), default=_limpio).replace("</", "<\\/")
     m = _marca()
-    pagina = (_PLANTILLA.replace("__MARCA_CSS__", m["css"]).replace("__LOGO__", m["logo"]).replace("__FAVICON__", m["favicon"])
-              .replace("__TITULO__", html.escape(titulo)).replace("__DATOS__", js))
-    with open(ruta, "w", encoding="utf-8") as f:
-        f.write(pagina)
-    return ruta
+    return (_PLANTILLA.replace("__MARCA_CSS__", m["css"]).replace("__LOGO__", m["logo"]).replace("__FAVICON__", m["favicon"])
+            .replace("__TITULO__", html.escape(datos["titulo"])).replace("__DATOS__", js))
 
 
 MARCA = Path(__file__).resolve().parents[1] / ".claude" / "skills" / "brand-guidelines-kin" / "assets"   # skill brand-guidelines-kin
@@ -137,11 +144,11 @@ h1{font-family:var(--ka-font-display);font-weight:var(--ka-weight-bold);font-siz
 .sub{color:var(--ka-color-gray-2);font-size:var(--ka-size-caption);line-height:1.4}
 #cuerpo{flex:1;overflow-y:auto;padding:var(--esp-4)}
 .bloque{margin-bottom:var(--esp-4)}.bloque>.eyebrow{display:block;margin-bottom:var(--esp-2)}
-#filtro{display:flex;flex-wrap:wrap;gap:var(--esp-2)}
-#filtro label{display:inline-flex;align-items:center;gap:var(--esp-1);padding:var(--esp-1) var(--esp-3);border:1px solid var(--ka-color-border);border-radius:var(--ka-radius-pill);
+#filtro,#resol{display:flex;flex-wrap:wrap;gap:var(--esp-2)}
+#filtro label,#resol label{display:inline-flex;align-items:center;gap:var(--esp-1);padding:var(--esp-1) var(--esp-3);border:1px solid var(--ka-color-border);border-radius:var(--ka-radius-pill);
  font-size:var(--ka-size-caption);cursor:pointer;user-select:none;background:var(--ka-color-surface)}
-#filtro label.on{background:var(--ka-color-black);color:var(--ka-color-white);border-color:var(--ka-color-black)}
-#filtro input{display:none}#filtro .n{color:var(--ka-color-gray-3)}
+#filtro label.on,#resol label.on{background:var(--ka-color-black);color:var(--ka-color-white);border-color:var(--ka-color-black)}
+#filtro input,#resol input{display:none}#filtro .n,#resol .n{color:var(--ka-color-gray-3)}
 #buscar{width:100%;padding:var(--esp-2) var(--esp-3);border:1px solid var(--ka-color-border);border-radius:var(--ka-radius-box);font:inherit;font-size:var(--ka-size-caption)}
 #buscar:focus{outline:2px solid var(--ka-color-black);outline-offset:1px}
 #res{margin-top:var(--esp-1)}#res div{padding:var(--esp-2) var(--esp-3);cursor:pointer;font-size:var(--ka-size-caption);border-radius:var(--ka-radius-base)}
@@ -177,6 +184,7 @@ h1{font-family:var(--ka-font-display);font-weight:var(--ka-weight-bold);font-siz
 .leaflet-popup-content-wrapper{border-radius:var(--ka-radius-box)}.leaflet-popup-content{margin:var(--esp-3) var(--esp-4);font-size:var(--ka-size-caption)}
 .ficha-cab{font-family:var(--ka-font-display);font-weight:var(--ka-weight-bold);font-size:var(--ka-size-body);line-height:1.2}
 .ficha-id{color:var(--ka-color-gray-3);font-size:var(--ka-size-overline);margin-bottom:var(--esp-2)}
+.ficha-sec{font-weight:var(--ka-weight-semibold);padding-top:var(--esp-2)!important;color:var(--ka-color-black)}
 .chips{display:flex;flex-wrap:wrap;gap:var(--esp-1);margin:var(--esp-1) 0 var(--esp-2)}
 .chip{display:inline-block;padding:.1rem var(--esp-2);border-radius:var(--ka-radius-pill);font-size:var(--ka-size-overline);font-weight:var(--ka-weight-semibold);
  background:var(--ka-color-gray-1);color:var(--ka-color-black)}.chip.fuerte{background:var(--ka-color-black);color:var(--ka-color-white)}.chip.acento{background:var(--ka-color-yellow);color:var(--ka-color-black)}
@@ -193,6 +201,7 @@ hr.sep{border:0;border-top:1px solid var(--ka-color-gray-1);margin:var(--esp-2) 
 <header id="cabeza"><button id="plegar" type="button">ocultar</button><img class="logo" src="__LOGO__" alt="Kin">
 <div class="eyebrow">Mapa interactivo</div><h1 id="t"></h1><div class="sub" id="s"></div></header>
 <div id="cuerpo">
+<div class="bloque" id="b-res"><span class="eyebrow" id="res-tit"></span><div id="resol"></div></div>
 <div class="bloque" id="b-filtro"><span class="eyebrow" id="filtro-tit"></span><div id="filtro"></div></div>
 <div class="bloque"><span class="eyebrow">Buscar</span><input id="buscar" placeholder="ID o nombre del PDV · Enter abre el primero" autocomplete="off"><div id="res"></div></div>
 <div class="bloque"><span class="eyebrow">Pasos</span><div class="pasos" id="pasos"></div>
@@ -228,6 +237,9 @@ function pasa(r, filtro) { return !filtro || r[filtro[0]] === filtro[1]; }
 const F = D.filtro, activos = new Set(F ? F.valores : []);         // filtro del panel (p. ej. subcanal)
 const visible = (ds, r) => !F || ds !== F.dataset || activos.has(r[F.campo]);
 let pasoActual = 0;
+const RS = D.resoluciones || null;        // selector de resolución H3: capas con "res" se ven solo en la resolución elegida
+let resActual = RS ? RS.defecto : null;
+const enRes = c => !RS || c.res === undefined || c.res === resActual;
 function construir(c) {
   const g = L.layerGroup();
   if (c.tipo === 'hex') {
@@ -239,9 +251,10 @@ function construir(c) {
       const v = vals[j]; if (v === null) continue;
       const pol = L.polygon(h3.cellToBoundary(h), {renderer: lienzo, stroke: !!c.borde, color: '#ffffff', weight: c.borde ? 1 : 0,
         fillColor: color(v, c.escala), fillOpacity: c.opacidad || 0.6})
-        .bindTooltip(() => '<b>' + c.nombre + ': ' + fmt(v) + '</b>' + je.map(([e, jj]) => '<br>' + e + ': <b>' + fmt(vals[jj]) + '</b>').join('') +
+        .bindTooltip(() => (c.res !== undefined ? '<span class="nota">H3 res ' + c.res + ' · ' + h + '</span><br>' : '') + '<b>' + c.nombre + ': ' + fmt(v) + '</b>' + je.map(([e, jj]) => '<br>' + e + ': <b>' + fmt(vals[jj]) + '</b>').join('') +
           barra(jd.map(([e, jj, col]) => [e, vals[jj], col])), {sticky: true});
       if (porId && porId[h]) pol.on('click', () => seleccionar(c.seleccion, porId[h]));
+      else if (c.ficha) pol.on('click', () => fichaHex(c, h, vals, H));
       pol.addTo(g);
     }
   } else if (c.tipo === 'poligonos') {
@@ -321,12 +334,26 @@ function seleccionar(ds, r) {
   t += '<hr class="sep"><div class="nota">' + notas.join('<br>') + '</div>';
   L.popup({maxWidth: 400, minWidth: 280, autoPanPaddingTopLeft: [16, 48], autoPanPaddingBottomRight: [300, 32]}).setLatLng(donde).setContent(t).openOn(mapa);
 }
+function fichaHex(c, h, vals, H) {   // capa hex con "ficha" = [[etiqueta, campo], ...]: clic → todos los datos del hexágono
+  sel.clearLayers();
+  const b = h3.cellToBoundary(h), r = Object.fromEntries(H.campos.map((k, i) => [k, vals[i]]));
+  L.polygon(b, {renderer: lienzo, color: '#141417', weight: 4, fill: false, interactive: false}).addTo(sel);
+  L.polygon(b, {renderer: lienzo, color: '#e5ff01', weight: 2.5, fill: false, interactive: false}).addTo(sel);
+  let t = '<div class="ficha-cab">Hexágono' + (c.res !== undefined ? ' res ' + c.res : '') + '</div><div class="ficha-id">H3 ' + esc(h) + '</div>' + chips(r);
+  const jd = (c.distribucion_ficha || c.distribucion || []).map(([e, k, col]) => [e, r[k], col]);
+  if (jd.length) t += '<div class="dist-tit">' + (c.titulo_distribucion || 'Distribución') + '</div>' + barra(jd) + '<hr class="sep">';
+  t += '<div class="ficha-wrap"><table class="ficha">' + c.ficha.map(([e, k]) => e.startsWith('§') ?
+    '<tr><td colspan="2" class="ficha-sec">' + esc(e.slice(1)) + '</td></tr>' : '<tr><td>' + e + '</td><td>' + esc(fmt(r[k])) + '</td></tr>').join('') + '</table></div>';
+  L.popup({maxWidth: 400, minWidth: 280, autoPanPaddingTopLeft: [16, 48], autoPanPaddingBottomRight: [300, 32]})
+    .setLatLng(h3.cellToLatLng(h)).setContent(t).openOn(mapa);
+}
 function leyenda(ids) {
   let h = '';
   for (const id of ids) {
     const c = capaPor[id]; if (!c.escala) continue;
     h += '<div style="margin-top:.4rem"><b>' + c.nombre + '</b><br>';
-    if (c.escala.tipo === 'categorica') h += Object.entries(c.escala.colores).map(([k, v]) => '<span class="sw" style="background:' + v + '"></span>' + (c.escala.etiquetas && c.escala.etiquetas[k] || k)).join('<br>');
+    if (c.escala.leyenda) h += '<span class="nota">' + c.escala.leyenda + '</span>';
+    else if (c.escala.tipo === 'categorica') h += Object.entries(c.escala.colores).map(([k, v]) => '<span class="sw" style="background:' + v + '"></span>' + (c.escala.etiquetas && c.escala.etiquetas[k] || k)).join('<br>');
     else h += '<div class="grad" style="background:linear-gradient(90deg,' + c.escala.colores.join(',') + ')"></div><div class="lab"><span>' + (c.escala.bajo || fmt(c.escala.min)) + '</span><span>' + (c.escala.alto || fmt(c.escala.max)) + '</span></div>';
     h += '</div>';
   }
@@ -338,12 +365,13 @@ function activar(i) {
   pasoActual = i;
   document.querySelectorAll('.pasos button').forEach((b, j) => b.classList.toggle('on', j === i));
   for (const id in capas) mapa.removeLayer(capas[id]);
-  for (const id of p.capas) { if (!capas[id]) capas[id] = construir(capaPor[id]); capas[id].addTo(mapa); }
+  const vis = p.capas.filter(id => enRes(capaPor[id]));
+  for (const id of vis) { if (!capas[id]) capas[id] = construir(capaPor[id]); capas[id].addTo(mapa); }
   document.getElementById('texto').innerHTML = '<h3>' + p.titulo + '</h3><p><b>Qué se hace:</b> ' + p.que + '</p><p><b>Por qué:</b> ' + p.porque + '</p>' +
     (p.formula ? '<div class="f">' + p.formula + '</div>' : '') + (p.cifras ? '<p>' + p.cifras + '</p>' : '');
   document.getElementById('pos').textContent = 'Paso ' + (i + 1) + ' de ' + D.pasos.length;
   document.getElementById('ant').disabled = i === 0; document.getElementById('sig').disabled = i === D.pasos.length - 1;
-  leyenda(p.capas);
+  leyenda(vis);
 }
 D.capas.filter(c => c.siempre).forEach(c => construir(c).addTo(mapa));      // contexto fijo (p. ej. límite municipal)
 D.pasos.forEach((p, i) => {
@@ -369,16 +397,56 @@ if (F) {
     sel.clearLayers(); mapa.closePopup(); activar(pasoActual);
   });
 } else document.getElementById('b-filtro').style.display = 'none';
+if (RS) {
+  document.getElementById('res-tit').textContent = RS.etiqueta;
+  const box = document.getElementById('resol');
+  box.innerHTML = RS.valores.map(o => '<label' + (o.valor === resActual ? ' class="on"' : '') + '><input type="radio" name="resol" value="' + o.valor + '"' +
+    (o.valor === resActual ? ' checked' : '') + '>' + esc(o.etiqueta) + (o.n !== undefined ? ' <span class="n">' + o.n.toLocaleString('es-MX') + '</span>' : '') + '</label>').join('');
+  box.querySelectorAll('input').forEach(inp => inp.onchange = () => {
+    resActual = +inp.value; box.querySelectorAll('label').forEach(l => l.classList.toggle('on', l.firstChild.checked));
+    sel.clearLayers(); mapa.closePopup(); activar(pasoActual);
+  });
+} else document.getElementById('b-res').style.display = 'none';
+if (D.buscar_placeholder) document.getElementById('buscar').placeholder = D.buscar_placeholder;
+const HEXR = D.capas.filter(c => c.tipo === 'hex' && c.res !== undefined);       // hexágonos buscables por id (una fuente por resolución)
+function buscarHex(q) {
+  const vistos = new Set(), out = [];
+  for (const c of HEXR.filter(c => c.buscar_campo && enRes(c))) {          // por valor (código postal): uno por valor
+    const H = D.hex[c.fuente], j = H.campos.indexOf(c.buscar_campo), por = {};
+    for (const h in H.filas) { const v = H.filas[h][j]; if (v !== null && String(v).startsWith(q)) (por[v] = por[v] || []).push(h); }
+    for (const v of Object.keys(por).sort()) { out.push({valor: v, campo: c.buscar_etiqueta || c.buscar_campo, res: c.res, hexes: por[v]}); if (out.length >= 8) return out; }
+    break;
+  }
+  for (const c of HEXR) { if (vistos.has(c.fuente)) continue; vistos.add(c.fuente);
+    const H = D.hex[c.fuente], j = H.campos.indexOf(c.campo);
+    for (const h in H.filas) if (h.includes(q)) { out.push({hex: h, res: c.res, etiqueta: H.filas[h][j]}); if (out.length >= 8) return out; } }
+  return out;
+}
+function irHex(o) {
+  if (RS && o.res !== resActual) { resActual = o.res; document.querySelectorAll('#resol input').forEach(i => { i.checked = +i.value === o.res; i.parentElement.classList.toggle('on', i.checked); }); }
+  const quiere = id => capaPor[id].res === o.res && (!o.hexes || capaPor[id].buscar_campo);   // por valor → el paso de ese campo
+  if (o.hexes) activar(D.pasos.findIndex(p => p.capas.some(quiere)));
+  else if (!D.pasos[pasoActual].capas.some(id => capaPor[id].res === o.res)) activar(D.pasos.findIndex(p => p.capas.some(id => capaPor[id].res === o.res))); else activar(pasoActual);
+  sel.clearLayers();
+  const todos = [];
+  for (const hx of (o.hexes || [o.hex])) { const b = h3.cellToBoundary(hx); todos.push(...b);
+    L.polygon(b, {renderer: lienzo, color: '#141417', weight: 4, fill: false, interactive: false}).addTo(sel);
+    L.polygon(b, {renderer: lienzo, color: '#e5ff01', weight: 2.5, fill: false, interactive: false}).addTo(sel); }
+  mapa.fitBounds(L.latLngBounds(todos), {maxZoom: 16, padding: [40, 40]});
+}
 let hallados = [];
-const ir = r => { mapa.setView([r.lat, r.lon], 17); seleccionar('pdv', r); };
+const ir = r => (r.hex || r.hexes) ? irHex(r) : (mapa.setView([r.lat, r.lon], 17), seleccionar('pdv', r));
 const buscar = document.getElementById('buscar'), res = document.getElementById('res');
 buscar.addEventListener('input', e => {
   const q = e.target.value.trim().toLowerCase(); res.innerHTML = ''; hallados = [];
   if (q.length < 2) return;
   hallados = (DS.pdv || []).filter(r => visible('pdv', r) && (String(r.id).includes(q) || String(r.nombre).toLowerCase().includes(q))).slice(0, 8);
+  if (!hallados.length && HEXR.length) hallados = buscarHex(q);
   if (!hallados.length) { res.innerHTML = '<div class="vacio">Sin resultados con el filtro actual</div>'; return; }
   hallados.forEach((r, k) => {
-    const d = document.createElement('div'); d.textContent = r.id + ' · ' + r.nombre + (r.letras ? ' · ' + r.letras : '') + (r.prioridad ? ' · ' + r.prioridad : '');
+    const d = document.createElement('div');
+    d.textContent = r.hexes ? r.campo + ' ' + r.valor + ' · ' + r.hexes.length + ' hexágonos res ' + r.res : r.hex ? 'H3 res ' + r.res + ' · ' + r.hex + (r.etiqueta ? ' · ' + r.etiqueta : '') :
+      r.id + ' · ' + r.nombre + (r.letras ? ' · ' + r.letras : '') + (r.prioridad ? ' · ' + r.prioridad : '');
     if (k === 0) d.className = 'on';
     d.onclick = () => ir(r); res.appendChild(d);
   });

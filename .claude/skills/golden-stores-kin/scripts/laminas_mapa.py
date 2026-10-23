@@ -3,7 +3,7 @@
 Uso (desde la raíz del repo):
     uv run python .claude/skills/golden-stores-kin/scripts/laminas_mapa.py [--pos 2720] [--ciudad merida] [--cliente bepensa]
 
-Lee el mapa `outputs/<ciudad>/<cliente>/06_mapa_qa_letras_<cliente>_zm_<ciudad>.html` y el diccionario
+Lee el mapa `outputs/<ciudad>/<cliente>/cliente/06_mapa_qa_letras_<cliente>_zm_<ciudad>.html` y el diccionario
 `cliente/06_diccionario_letras_<cliente>_zm_<ciudad>.xlsx` (los escribe el 06) y deja en `cliente/laminas/`:
   01_como_leer_el_mapa.png · 02_ficha_del_pdv.png · 03-05_diccionario_<i>_de_3.png   (láminas completas)
   figuras/mapa_numerado.png · figuras/ficha_numerada.png · figuras/diccionario_<i>.png  (solo la figura, para Claude Design)
@@ -99,7 +99,7 @@ def main():
     ap.add_argument("--pos", default="2720"); ap.add_argument("--ciudad", default="merida"); ap.add_argument("--cliente", default="bepensa")
     a = ap.parse_args()
     base = RAIZ / "outputs" / a.ciudad / a.cliente
-    mapa = base / f"06_mapa_qa_letras_{a.cliente}_zm_{a.ciudad}.html"
+    mapa = base / "cliente" / f"06_mapa_qa_letras_{a.cliente}_zm_{a.ciudad}.html"
     dicc = base / "cliente" / f"06_diccionario_letras_{a.cliente}_zm_{a.ciudad}.xlsx"
     for f in (mapa, dicc):
         if not f.exists():
